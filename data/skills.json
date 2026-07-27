@@ -1,0 +1,138 @@
+{
+  "skills": {
+    "debug_punch": {
+      "name": "调试拳", "type": "attack", "target": "enemy_single",
+      "power": 1.0, "mp_cost": 0, "element": "none",
+      "description": "最基础的攻击，一拳打过去看看结果。"
+    },
+    "breakpoint": {
+      "name": "断点术", "type": "debuff", "target": "enemy_single",
+      "power": 0.5, "mp_cost": 5, "element": "none",
+      "effect": {"type": "slow", "duration": 2, "value": 0.5},
+      "description": "在目标身上设断点，降低速度50%，持续2回合。"
+    },
+    "comment_shield": {
+      "name": "注释盾", "type": "defense", "target": "self",
+      "power": 0, "mp_cost": 8, "element": "none",
+      "effect": {"type": "shield", "duration": 1, "value": 0.5},
+      "description": "用注释包裹自己，下次受到伤害减少50%。"
+    },
+    "system_prompt": {
+      "name": "系统提示", "type": "buff", "target": "ally_all",
+      "power": 0, "mp_cost": 12, "element": "ai",
+      "effect": {"type": "atk_up", "duration": 3, "value": 0.3},
+      "description": "绿萝为全队提供系统提示，攻击力+30%，持续3回合。"
+    },
+    "context_window": {
+      "name": "上下文窗口", "type": "attack", "target": "enemy_all",
+      "power": 0.8, "mp_cost": 15, "element": "ai",
+      "description": "打开上下文窗口，对全体敌人造成伤害。"
+    },
+    "pointer_sword": {
+      "name": "指针剑法", "type": "attack", "target": "enemy_single",
+      "power": 1.8, "mp_cost": 10, "element": "structural",
+      "effect": {"type": "stack_overflow", "chance": 0.3, "duration": 1},
+      "description": "C老绝技，高伤害单体攻击，30%概率造成栈溢出（眩晕）。"
+    },
+    "memory_leak_palm": {
+      "name": "内存泄漏掌", "type": "attack", "target": "enemy_single",
+      "power": 0.6, "mp_cost": 8, "element": "structural",
+      "effect": {"type": "memory_leak", "duration": 3, "value": 0.05},
+      "description": "造成持续伤害，目标每回合损失5%HP，持续3回合。"
+    },
+    "python_crush": {
+      "name": "蟒蛇绞杀", "type": "attack", "target": "enemy_single",
+      "power": 1.5, "mp_cost": 12, "element": "oop",
+      "effect": {"type": "stun", "chance": 0.4, "duration": 1},
+      "description": "蛇君绝技，40%概率束缚目标（跳过1回合）。"
+    },
+    "decorator_magic": {
+      "name": "装饰器术", "type": "buff", "target": "ally_single",
+      "power": 0, "mp_cost": 10, "element": "oop",
+      "effect": {"type": "all_up", "duration": 3, "value": 0.2},
+      "description": "为友方添加装饰器，全属性+20%，持续3回合。"
+    },
+    "higher_order_func": {
+      "name": "高阶函数", "type": "attack", "target": "enemy_single",
+      "power": 1.2, "mp_cost": 15, "element": "functional",
+      "effect": {"type": "combo", "hits": 2},
+      "description": "Lambda道人绝技，连续攻击2次。"
+    },
+    "closure_art": {
+      "name": "闭包术", "type": "defense", "target": "ally_single",
+      "power": 0, "mp_cost": 12, "element": "functional",
+      "effect": {"type": "shield", "duration": 2, "value": 0.6},
+      "description": "为友方创建闭包护盾，2回合内减伤60%。"
+    },
+    "ownership_fist": {
+      "name": "所有权拳", "type": "attack", "target": "enemy_single",
+      "power": 2.0, "mp_cost": 15, "element": "structural",
+      "description": "铁卫绝技，强力单体攻击。move后无法再次行动（所有权转移）。"
+    },
+    "borrow_blade": {
+      "name": "借用剑", "type": "attack", "target": "enemy_single",
+      "power": 1.0, "mp_cost": 8, "element": "structural",
+      "effect": {"type": "counter", "chance": 0.5, "power": 1.0},
+      "description": "借用敌人的力量，50%概率反击。"
+    },
+    "backprop_palm": {
+      "name": "反向传播掌", "type": "attack", "target": "enemy_single",
+      "power": 1.0, "mp_cost": 18, "element": "ai",
+      "effect": {"type": "growing", "per_turn": 0.1},
+      "description": "张量仙子绝技，初始伤害一般，但每回合使用伤害+10%（梯度下降）。"
+    },
+    "fedlearn_formation": {
+      "name": "联邦学习阵", "type": "buff", "target": "ally_all",
+      "power": 0, "mp_cost": 25, "element": "ai",
+      "effect": {"type": "exp_share", "duration": 3},
+      "description": "全队共享经验值，持续3回合。"
+    },
+    "syntax_slash": {
+      "name": "语法斩", "type": "attack", "target": "enemy_single",
+      "power": 0.8, "mp_cost": 0, "element": "none",
+      "description": "红色波浪线攻击。"
+    },
+    "null_deref": {
+      "name": "空引用", "type": "attack", "target": "enemy_single",
+      "power": 1.5, "mp_cost": 0, "element": "structural",
+      "effect": {"type": "stack_overflow", "chance": 0.2, "duration": 1},
+      "description": "解引用空指针，20%概率造成Segmentation Fault。"
+    },
+    "lock_hold": {
+      "name": "锁死", "type": "debuff", "target": "enemy_single",
+      "power": 0.3, "mp_cost": 0, "element": "parallel",
+      "effect": {"type": "deadlock", "chance": 0.5, "duration": 1},
+      "description": "50%概率造成死锁（目标跳过1回合）。"
+    },
+    "null_wave": {
+      "name": "虚无之波", "type": "attack", "target": "ally_all",
+      "power": 1.2, "mp_cost": 30, "element": "none",
+      "description": "零号Bug的全体攻击。"
+    },
+    "infinite_loop": {
+      "name": "无限循环", "type": "debuff", "target": "enemy_single",
+      "power": 0, "mp_cost": 20, "element": "none",
+      "effect": {"type": "stun", "chance": 1.0, "duration": 2},
+      "description": "让目标陷入无限循环，眩晕2回合。"
+    },
+    "stack_overflow": {
+      "name": "栈溢出", "type": "attack", "target": "ally_all",
+      "power": 1.0, "mp_cost": 25, "element": "none",
+      "description": "零号Bug的全体攻击，造成栈溢出。"
+    },
+    "memory_corruption": {
+      "name": "内存腐蚀", "type": "debuff", "target": "enemy_single",
+      "power": 0.5, "mp_cost": 20, "element": "none",
+      "effect": {"type": "memory_leak", "duration": 5, "value": 0.08},
+      "description": "腐蚀目标内存，每回合损失8%HP，持续5回合。"
+    }
+  },
+  "paradigm_chart": {
+    "structural": {"strong_vs": "oop", "weak_vs": "ai"},
+    "oop": {"strong_vs": "functional", "weak_vs": "structural"},
+    "functional": {"strong_vs": "parallel", "weak_vs": "oop"},
+    "parallel": {"strong_vs": "ai", "weak_vs": "functional"},
+    "ai": {"strong_vs": "structural", "weak_vs": "parallel"},
+    "none": {"strong_vs": null, "weak_vs": null}
+  }
+}

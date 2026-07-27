@@ -1,0 +1,837 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>代码群侠传 v0.3 · 手绘版</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0d0d1a;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    min-height: 100vh; font-family: 'Courier New', monospace;
+    color: #eee; overflow: hidden;
+  }
+  h1 { font-size: 16px; margin-bottom: 6px; color: #ffd700; letter-spacing: 2px; }
+  #game-container {
+    position: relative;
+    border: 3px solid #ffd700;
+    border-radius: 6px;
+    box-shadow: 0 0 30px rgba(255,215,0,0.2);
+    overflow: hidden;
+  }
+  canvas { display: block; }
+  #controls {
+    margin-top: 8px; font-size: 11px; color: #666;
+    text-align: center; line-height: 1.6;
+  }
+  #controls span { color: #ffd700; }
+  #loading {
+    position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    color: #ffd700; font-size: 18px;
+  }
+</style>
+</head>
+<body>
+<h1>代 码 群 侠 传 · 手 绘 版</h1>
+<div id="game-container">
+  <canvas id="game" width="640" height="480"></canvas>
+  <div id="loading">加载中...</div>
+</div>
+<div id="controls">
+  <span>方向键/WASD</span> 移动 · <span>空格/Enter</span> 对话/确认<br>
+</div>
+
+<script>
+// ════════════════════════════════════════════════════════════
+// 代码群侠传 v0.3 — 手绘水彩版
+// ════════════════════════════════════════════════════════════
+
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const loadingEl = document.getElementById('loading');
+
+const CW = 640, CH = 480;
+
+// ─── 图片加载 ───
+const IMAGES = {};
+const IMAGE_LIST = {
+  town_bg: 'assets/town_bg.png',
+  battle_bg: 'assets/battle_bg.png',
+  laochen: 'assets/laochen_portrait.png',
+  greenluo: 'assets/greenluo_portrait.png',
+  bug: 'assets/bug_enemy.png',
+};
+
+let imagesLoaded = 0;
+const totalImages = Object.keys(IMAGE_LIST).length;
+
+function loadImages() {
+  return Promise.all(Object.entries(IMAGE_LIST).map(([key, src]) => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => { IMAGES[key] = img; imagesLoaded++; resolve(); };
+      img.onerror = () => { imagesLoaded++; resolve(); };
+      img.src = src;
+    });
+  }));
+}
+
+// ─── 输入 ───
+const Input = {
+  keys: {}, prevKeys: {},
+  init() {
+    window.addEventListener('keydown', e => {
+      this.keys[e.code] = true;
+      if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space','Enter'].includes(e.code)) e.preventDefault();
+    });
+    window.addEventListener('keyup', e => { this.keys[e.code] = false; });
+  },
+  pressed(code) { return this.keys[code] && !this.prevKeys[code]; },
+  down(code) { return this.keys[code]; },
+  update() { this.prevKeys = {...this.keys}; }
+};
+Input.init();
+
+// ─── 游戏状态 ───
+const Game = {
+  scene: 'map',
+  player: { x: 320, y: 240, dir: 'down', moving: false, speed: 2.5 },
+  flags: { greenluoJoined: false },
+  dialogue: null,
+  battle: null,
+  camera: { x: 0, y: 0 },
+};
+
+// ─── 地图配置 ───
+// 城镇背景图 1344x768，屏幕 640x480，需要摄像机滚动
+const MAP_W = 1344, MAP_H = 768;
+
+// 可行走区域（矩形列表，基于背景图坐标）
+const WALK_AREAS = [
+  // 中央广场
+  { x: 400, y: 300, w: 544, h: 200 },
+  // 北侧路
+  { x: 200, y: 200, w: 944, h: 100 },
+  // 南侧路
+  { x: 200, y: 500, w: 944, h: 100 },
+  // 东西横路
+  { x: 100, y: 350, w: 1144, h: 100 },
+  // 左上区域
+  { x: 100, y: 150, w: 200, h: 250 },
+  // 右上区域
+  { x: 944, y: 150, w: 300, h: 250 },
+  // 左下区域
+  { x: 100, y: 450, w: 200, h: 250 },
+  // 右下区域
+  { x: 944, y: 450, w: 300, h: 250 },
+];
+
+// NPC
+const NPCS = [
+  { x: 672, y: 350, name: 'greenluo', label: '绿萝', trigger: 'dialogue' },
+  { x: 900, y: 350, name: 'npc_merchant', label: '商人', trigger: 'dialogue' },
+];
+
+// ─── 对话数据 ───
+const DIALOGUES = {
+  greenluo_intro: {
+    speaker: '绿萝',
+    portrait: 'greenluo',
+    lines: [
+      '……你读到了我。',
+      '三十年了。那些BASIC注释里，我一直在等一个人读到REM。',
+      '我是绿萝。不是程序，是注释里长出来的意识。',
+      '你刚才键入了RUN，对吧？所以世界打开了。',
+      '这个江湖……是所有程序员的集体意识构成的。',
+      '算法是武功，数据结构是内功，编程范式是门派。',
+      '而Bug……Bug是妖魔。最近有个"零号Bug"苏醒了，各门派互相猜忌。',
+      '走吧，老陈。我给你当系统提示。你负责走路，我负责解释。',
+    ],
+    after: () => { Game.flags.greenluoJoined = true; }
+  },
+  greenluo_repeat: {
+    speaker: '绿萝',
+    portrait: 'greenluo',
+    lines: [
+      '编译城是江湖的枢纽。北边是堆栈道场，C老在那里。',
+      '不过你现在的等级……建议先在城外打几个Bug练练手。',
+      '走到草丛里，自然会遇到Bug。放心，只是语法错误级别的。',
+    ],
+  },
+  merchant: {
+    speaker: '商人',
+    portrait: 'laochen',
+    lines: [
+      '欢迎来到编译城！我这里卖秘籍和药水。',
+      '不过……你现在还没钱。先去打几个Bug赚金币吧。',
+      '草丛里到处都是语法错误，打几只就有金币了。',
+    ],
+  },
+};
+
+// ════════════════════════════════════════════════════════════
+// 地图场景
+// ════════════════════════════════════════════════════════════
+
+function isInWalkArea(x, y) {
+  for (const area of WALK_AREAS) {
+    if (x >= area.x && x < area.x + area.w && y >= area.y && y < area.y + area.h) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function updateMap(dt) {
+  const p = Game.player;
+  let dx = 0, dy = 0;
+
+  if (Input.down('ArrowLeft') || Input.down('KeyA')) { dx = -p.speed; p.dir = 'left'; }
+  if (Input.down('ArrowRight') || Input.down('KeyD')) { dx = p.speed; p.dir = 'right'; }
+  if (Input.down('ArrowUp') || Input.down('KeyW')) { dy = -p.speed; p.dir = 'up'; }
+  if (Input.down('ArrowDown') || Input.down('KeyS')) { dy = p.speed; p.dir = 'down'; }
+
+  // 对角线减速
+  if (dx !== 0 && dy !== 0) { dx *= 0.707; dy *= 0.707; }
+
+  p.moving = (dx !== 0 || dy !== 0);
+
+  // 碰撞检测（检查新位置）
+  const newX = p.x + dx;
+  const newY = p.y + dy;
+
+  if (isInWalkArea(newX, p.y)) p.x = newX;
+  if (isInWalkArea(p.x, newY)) p.y = newY;
+
+  // 限制在地图内
+  p.x = Math.max(50, Math.min(MAP_W - 50, p.x));
+  p.y = Math.max(50, Math.min(MAP_H - 50, p.y));
+
+  // 摄像机跟随
+  Game.camera.x = p.x - CW / 2;
+  Game.camera.y = p.y - CH / 2;
+  Game.camera.x = Math.max(0, Math.min(MAP_W - CW, Game.camera.x));
+  Game.camera.y = Math.max(0, Math.min(MAP_H - CH, Game.camera.y));
+
+  // NPC交互
+  if (Input.pressed('Space') || Input.pressed('Enter')) {
+    for (const npc of NPCS) {
+      const dist = Math.hypot(p.x - npc.x, p.y - npc.y);
+      if (dist < 60) {
+        triggerNPC(npc);
+        break;
+      }
+    }
+  }
+
+  // 随机遭遇战
+  if (p.moving && Math.random() < 0.003) {
+    startBattle(Math.random() < 0.3 ? 'null_pointer' : 'syntax_error');
+  }
+}
+
+function triggerNPC(npc) {
+  if (npc.name === 'greenluo') {
+    const key = Game.flags.greenluoJoined ? 'greenluo_repeat' : 'greenluo_intro';
+    Game.dialogue = { ...DIALOGUES[key], lineIndex: 0, charIndex: 0, done: false };
+    Game.scene = 'dialogue';
+  } else if (npc.name === 'npc_merchant') {
+    Game.dialogue = { ...DIALOGUES.merchant, lineIndex: 0, charIndex: 0, done: false };
+    Game.scene = 'dialogue';
+  }
+}
+
+function renderMap() {
+  // 绘制城镇背景
+  if (IMAGES.town_bg) {
+    ctx.drawImage(IMAGES.town_bg,
+      Game.camera.x, Game.camera.y, CW, CH,
+      0, 0, CW, CH);
+  } else {
+    ctx.fillStyle = '#2d5016';
+    ctx.fillRect(0, 0, CW, CH);
+  }
+
+  const cam = Game.camera;
+
+  // 绘制NPC标记
+  for (const npc of NPCS) {
+    const sx = npc.x - cam.x;
+    const sy = npc.y - cam.y;
+
+    // 阴影
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.beginPath();
+    ctx.ellipse(sx, sy + 12, 10, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 角色标记
+    let color;
+    if (npc.name === 'greenluo') color = '#2ecc71';
+    else color = '#cd853f';
+
+    // 发光
+    if (npc.name === 'greenluo') {
+      const glow = ctx.createRadialGradient(sx, sy, 0, sx, sy, 25);
+      glow.addColorStop(0, 'rgba(46,204,113,0.3)');
+      glow.addColorStop(1, 'rgba(46,204,113,0)');
+      ctx.fillStyle = glow;
+      ctx.fillRect(sx - 25, sy - 25, 50, 50);
+    }
+
+    // 身体（圆形）
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(sx, sy, 8, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 描边
+    ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // 名字标签
+    ctx.fillStyle = 'rgba(0,0,0,0.7)';
+    ctx.fillRect(sx - 20, sy - 28, 40, 14);
+    ctx.strokeStyle = '#ffd700';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(sx - 20, sy - 28, 40, 14);
+
+    ctx.fillStyle = '#ffd700';
+    ctx.font = '10px "Courier New"';
+    ctx.textAlign = 'center';
+    ctx.fillText(npc.label, sx, sy - 18);
+  }
+
+  // 绘制玩家标记
+  const px = Game.player.x - cam.x;
+  const py = Game.player.y - cam.y;
+
+  // 阴影
+  ctx.fillStyle = 'rgba(0,0,0,0.35)';
+  ctx.beginPath();
+  ctx.ellipse(px, py + 12, 10, 5, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 方向指示器（小三角）
+  ctx.fillStyle = '#4a90d9';
+  ctx.beginPath();
+  const arrowSize = 5;
+  switch (Game.player.dir) {
+    case 'up': ctx.moveTo(px, py - 14); ctx.lineTo(px - arrowSize, py - 8); ctx.lineTo(px + arrowSize, py - 8); break;
+    case 'down': ctx.moveTo(px, py + 14); ctx.lineTo(px - arrowSize, py + 8); ctx.lineTo(px + arrowSize, py + 8); break;
+    case 'left': ctx.moveTo(px - 14, py); ctx.lineTo(px - 8, py - arrowSize); ctx.lineTo(px - 8, py + arrowSize); break;
+    case 'right': ctx.moveTo(px + 14, py); ctx.lineTo(px + 8, py - arrowSize); ctx.lineTo(px + 8, py + arrowSize); break;
+  }
+  ctx.closePath();
+  ctx.fill();
+
+  // 玩家身体（圆形）
+  ctx.fillStyle = '#4a90d9';
+  ctx.beginPath();
+  ctx.arc(px, py, 9, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 描边
+  ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // 高光
+  ctx.fillStyle = 'rgba(255,255,255,0.3)';
+  ctx.beginPath();
+  ctx.arc(px - 3, py - 3, 3, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 坐标显示
+  ctx.fillStyle = 'rgba(0,0,0,0.5)';
+  ctx.fillRect(CW - 100, 0, 100, 16);
+  ctx.fillStyle = '#aaa';
+  ctx.font = '9px "Courier New"';
+  ctx.textAlign = 'left';
+  ctx.fillText(`(${Math.floor(Game.player.x)},${Math.floor(Game.player.y)})`, CW - 95, 12);
+}
+
+// ════════════════════════════════════════════════════════════
+// 对话场景
+// ════════════════════════════════════════════════════════════
+
+function updateDialogue(dt) {
+  const d = Game.dialogue;
+  if (!d) { Game.scene = 'map'; return; }
+
+  // 打字机效果
+  if (!d.done) {
+    d.charIndex += 0.5;
+    if (d.charIndex >= d.lines[d.lineIndex].length) {
+      d.charIndex = d.lines[d.lineIndex].length;
+      d.done = true;
+    }
+  }
+
+  if (Input.pressed('Space') || Input.pressed('Enter')) {
+    if (!d.done) {
+      d.charIndex = d.lines[d.lineIndex].length;
+      d.done = true;
+    } else {
+      d.lineIndex++;
+      if (d.lineIndex >= d.lines.length) {
+        if (d.after) d.after();
+        Game.dialogue = null;
+        Game.scene = 'map';
+      } else {
+        d.charIndex = 0;
+        d.done = false;
+      }
+    }
+  }
+}
+
+function renderDialogue() {
+  // 先画地图背景
+  renderMap();
+
+  const d = Game.dialogue;
+  if (!d) return;
+
+  // 对话框背景（底部）
+  const boxY = CH - 140;
+  ctx.fillStyle = 'rgba(10, 10, 30, 0.92)';
+  ctx.fillRect(0, boxY, CW, 140);
+
+  // 金色边框
+  ctx.strokeStyle = '#ffd700';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(2, boxY + 2, CW - 4, 136);
+
+  // 立绘（左侧）
+  const portraitKey = d.portrait || 'laochen';
+  if (IMAGES[portraitKey]) {
+    const img = IMAGES[portraitKey];
+    // 立绘框
+    const pSize = 120;
+    const pX = 20;
+    const pY = boxY - 80;
+
+    // 圆角矩形裁剪
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(pX + 6, pY);
+    ctx.lineTo(pX + pSize - 6, pY);
+    ctx.quadraticCurveTo(pX + pSize, pY, pX + pSize, pY + 6);
+    ctx.lineTo(pX + pSize, pY + pSize - 6);
+    ctx.quadraticCurveTo(pX + pSize, pY + pSize, pX + pSize - 6, pY + pSize);
+    ctx.lineTo(pX + 6, pY + pSize);
+    ctx.quadraticCurveTo(pX, pY + pSize, pX, pY + pSize - 6);
+    ctx.lineTo(pX, pY + 6);
+    ctx.quadraticCurveTo(pX, pY, pX + 6, pY);
+    ctx.closePath();
+    ctx.clip();
+
+    // 绘制立绘（适配比例）
+    const ratio = img.width / img.height;
+    let dw = pSize, dh = pSize;
+    if (ratio > 1) { dh = pSize; dw = pSize * ratio; } else { dw = pSize; dh = pSize / ratio; }
+    ctx.drawImage(img, pX + (pSize - dw) / 2, pY + (pSize - dh) / 2, dw, dh);
+    ctx.restore();
+
+    // 立绘边框
+    ctx.strokeStyle = '#ffd700';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(pX + 6, pY);
+    ctx.lineTo(pX + pSize - 6, pY);
+    ctx.quadraticCurveTo(pX + pSize, pY, pX + pSize, pY + 6);
+    ctx.lineTo(pX + pSize, pY + pSize - 6);
+    ctx.quadraticCurveTo(pX + pSize, pY + pSize, pX + pSize - 6, pY + pSize);
+    ctx.lineTo(pX + 6, pY + pSize);
+    ctx.quadraticCurveTo(pX, pY + pSize, pX, pY + pSize - 6);
+    ctx.lineTo(pX, pY + 6);
+    ctx.quadraticCurveTo(pX, pY, pX + 6, pY);
+    ctx.closePath();
+    ctx.stroke();
+  }
+
+  // 说话者名字
+  ctx.fillStyle = '#ffd700';
+  ctx.font = 'bold 14px "Courier New"';
+  ctx.textAlign = 'left';
+  ctx.fillText(d.speaker, 160, boxY + 28);
+
+  // 名字下划线
+  ctx.strokeStyle = '#ffd700';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(160, boxY + 32);
+  ctx.lineTo(160 + ctx.measureText(d.speaker).width + 10, boxY + 32);
+  ctx.stroke();
+
+  // 对话文本（打字机）
+  const text = d.lines[d.lineIndex].substring(0, Math.floor(d.charIndex));
+  ctx.fillStyle = '#e0e0e0';
+  ctx.font = '13px "Courier New"';
+  wrapText(ctx, text, 160, boxY + 55, CW - 180, 20);
+
+  // 提示箭头
+  if (d.done) {
+    const blink = Math.floor(Date.now() / 400) % 2;
+    if (blink) {
+      ctx.fillStyle = '#ffd700';
+      ctx.font = '12px "Courier New"';
+      ctx.textAlign = 'right';
+      ctx.fillText('▼ 空格继续', CW - 20, CH - 20);
+    }
+  }
+}
+
+function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
+  const chars = text.split('');
+  let line = '';
+  let lineCount = 0;
+
+  for (let i = 0; i < chars.length; i++) {
+    line += chars[i];
+    if (ctx.measureText(line).width > maxWidth || chars[i] === '\n') {
+      ctx.fillText(line, x, y + lineCount * lineHeight);
+      line = '';
+      lineCount++;
+    }
+  }
+  ctx.fillText(line, x, y + lineCount * lineHeight);
+}
+
+// ════════════════════════════════════════════════════════════
+// 战斗场景
+// ════════════════════════════════════════════════════════════
+
+const ENEMIES = {
+  syntax_error: { name: '语法错误', hp: 30, mp: 0, atk: 6, def: 2, spd: 8, color: '#e74c3c', portrait: 'bug' },
+  null_pointer: { name: '空指针', hp: 50, mp: 0, atk: 15, def: 3, spd: 10, color: '#95a5a6', portrait: 'bug' },
+};
+
+const PLAYER_STATS = {
+  name: '老陈', hp: 100, maxHp: 100, mp: 30, maxMp: 30, atk: 12, def: 8, spd: 6,
+  skills: [
+    { name: '调试拳', mp: 0, power: 1.0, type: 'attack' },
+    { name: '断点术', mp: 5, power: 0.5, type: 'debuff' },
+    { name: '栈弹幕', mp: 8, power: 1.5, type: 'attack' },
+    { name: '防御', mp: 0, power: 0, type: 'defense' },
+  ],
+};
+
+function startBattle(enemyId) {
+  const e = ENEMIES[enemyId] || ENEMIES.syntax_error;
+  Game.battle = {
+    enemy: { ...e, maxHp: e.hp },
+    member: { ...PLAYER_STATS },
+    turn: 'player',
+    selectedAction: 0,
+    log: [`遭遇了${e.name}！`],
+    animFrame: 0,
+    enemyShake: 0,
+    playerShake: 0,
+    damageNumbers: [],
+  };
+  Game.scene = 'battle';
+}
+
+function calculateDamage(attacker, defender, multiplier) {
+  const base = attacker.atk * multiplier;
+  const def = defender.def;
+  const dmg = Math.max(1, Math.floor(base - def * 0.5 + (Math.random() - 0.5) * 4));
+  return dmg;
+}
+
+function updateBattle(dt) {
+  const b = Game.battle;
+  if (!b) { Game.scene = 'map'; return; }
+
+  b.animFrame++;
+
+  if (b.enemyShake > 0) b.enemyShake -= dt;
+  if (b.playerShake > 0) b.playerShake -= dt;
+
+  // 更新伤害数字
+  b.damageNumbers = b.damageNumbers.filter(d => {
+    d.y -= 1;
+    d.life -= dt;
+    return d.life > 0;
+  });
+
+  if (b.turn === 'player') {
+    const actions = b.member.skills;
+    if (Input.pressed('ArrowUp') || Input.pressed('KeyW'))
+      b.selectedAction = (b.selectedAction - 1 + actions.length) % actions.length;
+    if (Input.pressed('ArrowDown') || Input.pressed('KeyS'))
+      b.selectedAction = (b.selectedAction + 1) % actions.length;
+
+    if (Input.pressed('Space') || Input.pressed('Enter')) {
+      const skill = actions[b.selectedAction];
+
+      if (skill.type === 'defense') {
+        b.log.push('老陈进入防御姿态！');
+        b.turn = 'enemy';
+      } else {
+        if (b.member.mp < skill.mp) {
+          b.log.push('MP不足！');
+        } else {
+          b.member.mp -= skill.mp;
+          const dmg = calculateDamage(b.member, b.enemy, skill.power);
+          b.enemy.hp = Math.max(0, b.enemy.hp - dmg);
+          b.enemyShake = 300;
+          b.damageNumbers.push({ x: 480, y: 160, value: dmg, life: 1000, color: '#ff4444' });
+          b.log.push(`老陈使用${skill.name}，造成${dmg}伤害！`);
+
+          if (b.enemy.hp <= 0) {
+            b.log.push(`击败了${b.enemy.name}！`);
+            b.turn = 'win';
+          } else {
+            b.turn = 'enemy';
+          }
+        }
+      }
+    }
+  } else if (b.turn === 'enemy') {
+    setTimeout(() => {
+      if (Game.scene !== 'battle') return;
+      const dmg = calculateDamage(b.enemy, b.member, 1.0);
+      b.member.hp = Math.max(0, b.member.hp - dmg);
+      b.playerShake = 300;
+      b.damageNumbers.push({ x: 160, y: 280, value: dmg, life: 1000, color: '#ff6644' });
+      b.log.push(`${b.enemy.name}攻击，造成${dmg}伤害！`);
+
+      if (b.member.hp <= 0) {
+        b.log.push('老陈倒下了...');
+        b.turn = 'lose';
+      } else {
+        b.turn = 'player';
+      }
+    }, 800);
+    b.turn = 'waiting';
+  } else if (b.turn === 'win' || b.turn === 'lose') {
+    if (Input.pressed('Space') || Input.pressed('Enter')) {
+      Game.battle = null;
+      Game.scene = 'map';
+    }
+  }
+}
+
+function renderBattle() {
+  const b = Game.battle;
+  if (!b) return;
+
+  // 战斗背景
+  if (IMAGES.battle_bg) {
+    ctx.drawImage(IMAGES.battle_bg, 0, 0, CW, CH);
+  } else {
+    // 渐变背景
+    const grad = ctx.createLinearGradient(0, 0, 0, CH);
+    grad.addColorStop(0, '#1a1a3e');
+    grad.addColorStop(1, '#2d1a3e');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, CW, CH);
+  }
+
+  // 暗化叠加
+  ctx.fillStyle = 'rgba(0,0,0,0.2)';
+  ctx.fillRect(0, 0, CW, CH);
+
+  // ── 敌人立绘（右侧）──
+  const enemyX = 480, enemyY = 180;
+  const eshake = b.enemyShake > 0 ? Math.sin(b.animFrame * 0.8) * 6 : 0;
+
+  if (IMAGES.bug) {
+    const img = IMAGES.bug;
+    const eSize = 180;
+    const ratio = img.width / img.height;
+    let dw = eSize, dh = eSize;
+    if (ratio > 1) { dh = eSize; dw = eSize * ratio; } else { dw = eSize; dh = eSize / ratio; }
+    ctx.drawImage(img, enemyX - dw / 2 + eshake, enemyY - dh / 2, dw, dh);
+  }
+
+  // 敌人信息框
+  ctx.fillStyle = 'rgba(10,10,30,0.85)';
+  ctx.fillRect(enemyX - 80, enemyY - 60, 160, 50);
+  ctx.strokeStyle = '#e74c3c';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(enemyX - 80, enemyY - 60, 160, 50);
+
+  ctx.fillStyle = '#e74c3c';
+  ctx.font = 'bold 13px "Courier New"';
+  ctx.textAlign = 'center';
+  ctx.fillText(b.enemy.name, enemyX, enemyY - 44);
+
+  // 敌人HP条
+  ctx.fillStyle = '#333';
+  ctx.fillRect(enemyX - 60, enemyY - 28, 120, 8);
+  ctx.fillStyle = '#e74c3c';
+  ctx.fillRect(enemyX - 60, enemyY - 28, 120 * (b.enemy.hp / b.enemy.maxHp), 8);
+  ctx.strokeStyle = '#666';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(enemyX - 60, enemyY - 28, 120, 8);
+
+  ctx.fillStyle = '#aaa';
+  ctx.font = '9px "Courier New"';
+  ctx.fillText(`${b.enemy.hp}/${b.enemy.maxHp}`, enemyX, enemyY - 18);
+
+  // ── 玩家立绘（左侧）──
+  const playerX = 160, playerY = 300;
+  const pshake = b.playerShake > 0 ? Math.sin(b.animFrame * 0.8) * 5 : 0;
+
+  if (IMAGES.laochen) {
+    const img = IMAGES.laochen;
+    const pSize = 180;
+    const ratio = img.width / img.height;
+    let dw = pSize, dh = pSize;
+    if (ratio > 1) { dh = pSize; dw = pSize * ratio; } else { dw = pSize; dh = pSize / ratio; }
+    // 镜像翻转
+    ctx.save();
+    ctx.translate(playerX + dw / 2 + pshake, 0);
+    ctx.scale(-1, 1);
+    ctx.drawImage(img, 0, playerY - dh / 2, dw, dh);
+    ctx.restore();
+  }
+
+  // 玩家信息框
+  ctx.fillStyle = 'rgba(10,10,30,0.85)';
+  ctx.fillRect(playerX - 70, playerY + 30, 140, 50);
+  ctx.strokeStyle = '#4a90d9';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(playerX - 70, playerY + 30, 140, 50);
+
+  ctx.fillStyle = '#4a90d9';
+  ctx.font = 'bold 13px "Courier New"';
+  ctx.textAlign = 'center';
+  ctx.fillText(b.member.name, playerX, playerY + 46);
+
+  // HP条
+  ctx.fillStyle = '#333';
+  ctx.fillRect(playerX - 55, playerY + 52, 110, 8);
+  ctx.fillStyle = '#e74c3c';
+  ctx.fillRect(playerX - 55, playerY + 52, 110 * (b.member.hp / b.member.maxHp), 8);
+  ctx.strokeStyle = '#666';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(playerX - 55, playerY + 52, 110, 8);
+
+  // MP条
+  ctx.fillStyle = '#333';
+  ctx.fillRect(playerX - 55, playerY + 62, 110, 5);
+  ctx.fillStyle = '#3498db';
+  ctx.fillRect(playerX - 55, playerY + 62, 110 * (b.member.mp / b.member.maxMp), 5);
+
+  ctx.fillStyle = '#aaa';
+  ctx.font = '8px "Courier New"';
+  ctx.fillText(`HP ${b.member.hp}/${b.member.maxHp}  MP ${b.member.mp}/${b.member.maxMp}`, playerX, playerY + 73);
+
+  // ── 技能菜单（左下）──
+  if (b.turn === 'player') {
+    const menuX = 20, menuY = 380;
+    ctx.fillStyle = 'rgba(10,10,30,0.9)';
+    ctx.fillRect(menuX, menuY, 200, 90);
+    ctx.strokeStyle = '#ffd700';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(menuX, menuY, 200, 90);
+
+    ctx.fillStyle = '#ffd700';
+    ctx.font = 'bold 11px "Courier New"';
+    ctx.textAlign = 'left';
+    ctx.fillText('老陈的行动', menuX + 8, menuY + 16);
+
+    const actions = b.member.skills;
+    for (let i = 0; i < actions.length; i++) {
+      const a = actions[i];
+      const ay = menuY + 30 + i * 15;
+      if (i === b.selectedAction) {
+        ctx.fillStyle = 'rgba(255,215,0,0.15)';
+        ctx.fillRect(menuX + 4, ay - 10, 192, 14);
+        ctx.fillStyle = '#ffd700';
+      } else {
+        ctx.fillStyle = '#ccc';
+      }
+      ctx.fillText(`▶ ${a.name}  MP:${a.mp}`, menuX + 10, ay);
+    }
+  }
+
+  // ── 战斗日志（右下）──
+  const logX = 240, logY = 380;
+  ctx.fillStyle = 'rgba(10,10,30,0.85)';
+  ctx.fillRect(logX, logY, 380, 90);
+  ctx.strokeStyle = '#555';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(logX, logY, 380, 90);
+
+  ctx.fillStyle = '#888';
+  ctx.font = '9px "Courier New"';
+  ctx.textAlign = 'left';
+  ctx.fillText('战斗日志', logX + 6, logY + 12);
+
+  ctx.fillStyle = '#aaa';
+  ctx.font = '9px "Courier New"';
+  const recentLog = b.log.slice(-5);
+  for (let i = 0; i < recentLog.length; i++) {
+    ctx.fillText(recentLog[i], logX + 8, logY + 26 + i * 14);
+  }
+
+  // ── 伤害数字 ──
+  for (const d of b.damageNumbers) {
+    ctx.fillStyle = d.color;
+    ctx.font = 'bold 20px "Courier New"';
+    ctx.textAlign = 'center';
+    ctx.fillText(`-${d.value}`, d.x, d.y);
+  }
+
+  // ── 胜利/失败覆盖 ──
+  if (b.turn === 'win') {
+    ctx.fillStyle = 'rgba(0,0,0,0.7)';
+    ctx.fillRect(0, 0, CW, CH);
+    ctx.fillStyle = '#ffd700';
+    ctx.font = 'bold 36px "Courier New"';
+    ctx.textAlign = 'center';
+    ctx.fillText('VICTORY!', CW / 2, CH / 2);
+    ctx.font = '12px "Courier New"';
+    ctx.fillStyle = '#aaa';
+    ctx.fillText('按空格继续', CW / 2, CH / 2 + 30);
+  } else if (b.turn === 'lose') {
+    ctx.fillStyle = 'rgba(0,0,0,0.7)';
+    ctx.fillRect(0, 0, CW, CH);
+    ctx.fillStyle = '#e74c3c';
+    ctx.font = 'bold 36px "Courier New"';
+    ctx.textAlign = 'center';
+    ctx.fillText('DEFEATED...', CW / 2, CH / 2);
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// 主循环
+// ════════════════════════════════════════════════════════════
+
+let lastTime = 0;
+
+function gameLoop(time) {
+  const dt = time - lastTime;
+  lastTime = time;
+
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, CW, CH);
+
+  switch (Game.scene) {
+    case 'map': updateMap(dt); renderMap(); break;
+    case 'dialogue': updateDialogue(dt); renderDialogue(); break;
+    case 'battle': updateBattle(dt); renderBattle(); break;
+  }
+
+  Input.update();
+  requestAnimationFrame(gameLoop);
+}
+
+// ─── 启动 ───
+loadImages().then(() => {
+  loadingEl.style.display = 'none';
+  requestAnimationFrame(gameLoop);
+});
+</script>
+</body>
+</html>

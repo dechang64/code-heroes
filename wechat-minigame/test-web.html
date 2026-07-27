@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>代码群侠传 - 小游戏模拟测试</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0d0d1a;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    min-height: 100vh; font-family: 'Courier New', monospace;
+    color: #eee; overflow: hidden;
+  }
+  #game-container {
+    position: relative;
+    border: 3px solid #ffd700;
+    border-radius: 6px;
+    box-shadow: 0 0 30px rgba(255,215,0,0.2);
+    overflow: hidden;
+  }
+  canvas { display: block; }
+  #info {
+    margin-top: 8px; font-size: 11px; color: #666;
+    text-align: center; line-height: 1.6;
+  }
+  #info span { color: #ffd700; }
+</style>
+</head>
+<body>
+<div id="game-container">
+  <canvas id="game-canvas" width="375" height="667"></canvas>
+</div>
+<div id="info">
+  <span>左半屏拖动</span> 移动 · <span>右半屏点击</span> 确认/对话<br>
+  模拟 iPhone 8 竖屏 375×667
+</div>
+
+<script>
+// ─── 微信小游戏 API 模拟层 ───
+// game.js 会调用 wx.createCanvas() 返回这个 canvas
+const _canvas = document.getElementById('game-canvas');
+
+window.wx = {
+  _canvas: _canvas,
+  createCanvas() { return _canvas; },
+  createImage() { return new Image(); },
+  _touchStart: null,
+  _touchMove: null,
+  _touchEnd: null,
+  onTouchStart(cb) { this._touchStart = cb; },
+  onTouchMove(cb) { this._touchMove = cb; },
+  onTouchEnd(cb) { this._touchEnd = cb; },
+};
+
+// 触摸事件转发
+_canvas.addEventListener('touchstart', (e) => {
+  e.preventDefault();
+  const touches = Array.from(e.touches).map(t => ({
+    clientX: t.clientX, clientY: t.clientY, identifier: t.identifier
+  }));
+  if (wx._touchStart) wx._touchStart({ touches });
+}, { passive: false });
+
+_canvas.addEventListener('touchmove', (e) => {
+  e.preventDefault();
+  const touches = Array.from(e.touches).map(t => ({
+    clientX: t.clientX, clientY: t.clientY, identifier: t.identifier
+  }));
+  if (wx._touchMove) wx._touchMove({ touches });
+}, { passive: false });
+
+_canvas.addEventListener('touchend', (e) => {
+  e.preventDefault();
+  const remaining = Array.from(e.touches).map(t => ({
+    clientX: t.clientX, clientY: t.clientY, identifier: t.identifier
+  }));
+  if (wx._touchEnd) wx._touchEnd({ touches: remaining });
+}, { passive: false });
+
+// 鼠标模拟触摸（测试用）
+let mouseDown = false;
+
+_canvas.addEventListener('mousedown', (e) => {
+  mouseDown = true;
+  const rect = _canvas.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+  if (wx._touchStart) wx._touchStart({ touches: [{ clientX: x, clientY: y, identifier: 0 }] });
+});
+
+_canvas.addEventListener('mousemove', (e) => {
+  if (!mouseDown) return;
+  const rect = _canvas.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+  if (wx._touchMove) wx._touchMove({ touches: [{ clientX: x, clientY: y, identifier: 0 }] });
+});
+
+_canvas.addEventListener('mouseup', (e) => {
+  mouseDown = false;
+  if (wx._touchEnd) wx._touchEnd({ touches: [] });
+});
+
+// canvas.requestAnimationFrame 兼容
+_canvas.requestAnimationFrame = (cb) => requestAnimationFrame(cb);
+</script>
+
+<script src="game.js"></script>
+</body>
+</html>

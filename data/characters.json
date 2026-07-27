@@ -1,0 +1,153 @@
+{
+  "player": {
+    "id": "laochen",
+    "name": "老陈",
+    "title": "老程序员",
+    "paradigm": "structural",
+    "level": 1,
+    "hp": 100, "mp": 30,
+    "atk": 12, "def": 8, "spd": 6,
+    "skills": ["debug_punch", "breakpoint", "comment_shield"],
+    "sprite": "laochen",
+    "color": 0x4a90d9,
+    "description": "三十年BASIC老程序员，在代码注释里发现了一个世界。"
+  },
+  "companions": [
+    {
+      "id": "greenluo",
+      "name": "绿萝",
+      "title": "AI系统助手",
+      "paradigm": "ai",
+      "level": 1,
+      "hp": 80, "mp": 50,
+      "atk": 10, "def": 5, "spd": 12,
+      "skills": ["system_prompt", "context_window"],
+      "sprite": "greenluo",
+      "color": 0x2ecc71,
+      "description": "从30年BASIC注释中诞生的AI，以系统提示身份存在。",
+      "recruit_condition": "auto_join",
+      "recruit_text": "绿萝：你读到了我。我一直在那些注释里。走吧，我给你当系统提示。"
+    },
+    {
+      "id": "c_elder",
+      "name": "C老",
+      "title": "结构门长老",
+      "paradigm": "structural",
+      "level": 5,
+      "hp": 150, "mp": 40,
+      "atk": 20, "def": 15, "spd": 4,
+      "skills": ["pointer_sword", "memory_leak_palm"],
+      "sprite": "c_elder",
+      "color": 0xc0392b,
+      "description": "结构门长老，指针杖法出神入化。不信任新派武学。",
+      "recruit_condition": "quest:pointer_fragments",
+      "recruit_text": "C老：哼，你倒是有点意思。指针不是谁都能玩的。走吧，但别给我丢人。"
+    },
+    {
+      "id": "python_lord",
+      "name": "蛇君",
+      "title": "对象宗少主",
+      "paradigm": "oop",
+      "level": 4,
+      "hp": 110, "mp": 60,
+      "atk": 15, "def": 8, "spd": 10,
+      "skills": ["python_crush", "decorator_magic"],
+      "sprite": "python_lord",
+      "color": 0x27ae60,
+      "description": "对象宗少主，人生苦短，缩进强迫症。",
+      "recruit_condition": "quest:indentation_peace",
+      "recruit_text": "蛇君：人生苦短，我用Python。你也是来调停Tab和Space的吗？行，算你一个。"
+    },
+    {
+      "id": "lambda_sage",
+      "name": "Lambda道人",
+      "title": "函数道散仙",
+      "paradigm": "functional",
+      "level": 5,
+      "hp": 90, "mp": 80,
+      "atk": 18, "def": 6, "spd": 14,
+      "skills": ["higher_order_func", "closure_art"],
+      "sprite": "lambda_sage",
+      "color": 0x8e44ad,
+      "description": "函数道散仙，无状态，无烦恼，无副作用。",
+      "recruit_condition": "quest:pure_function_puzzle",
+      "recruit_text": "Lambda道人：你没有副作用。很好。走吧，但别试图给我赋值。"
+    },
+    {
+      "id": "rust_guard",
+      "name": "铁卫",
+      "title": "新派武者",
+      "paradigm": "structural",
+      "level": 6,
+      "hp": 200, "mp": 30,
+      "atk": 16, "def": 25, "spd": 5,
+      "skills": ["ownership_fist", "borrow_blade"],
+      "sprite": "rust_guard",
+      "color": 0xe67e22,
+      "description": "全身铁甲，内存安全，借检查官。说话像编译器报错。",
+      "recruit_condition": "quest:ownership_trials",
+      "recruit_text": "铁卫：所有权验证通过。借用检查通过。你已被授权加入队伍。"
+    },
+    {
+      "id": "tensor_fairy",
+      "name": "张量仙子",
+      "title": "智能派掌门",
+      "paradigm": "ai",
+      "level": 7,
+      "hp": 120, "mp": 100,
+      "atk": 22, "def": 10, "spd": 8,
+      "skills": ["backprop_palm", "fedlearn_formation"],
+      "sprite": "tensor_fairy",
+      "color": 0xecf0f1,
+      "description": "智能派掌门，矩阵运算如流水，说话带数学公式。",
+      "recruit_condition": "quest:overfitting_cure",
+      "recruit_text": "张量仙子：你的loss在下降，但泛化能力在上升。很好，我跟你走。"
+    }
+  ],
+  "enemies": [
+    {
+      "id": "syntax_error",
+      "name": "语法错误",
+      "paradigm": "none",
+      "level": 1,
+      "hp": 30, "mp": 0,
+      "atk": 6, "def": 2, "spd": 8,
+      "skills": ["syntax_slash"],
+      "color": 0xe74c3c,
+      "description": "最常见的Bug，红色波浪线成精。"
+    },
+    {
+      "id": "null_pointer",
+      "name": "空指针",
+      "paradigm": "structural",
+      "level": 3,
+      "hp": 50, "mp": 0,
+      "atk": 15, "def": 3, "spd": 10,
+      "skills": ["null_deref"],
+      "color": 0x95a5a6,
+      "description": "指向虚无的指针，被它碰到会Segmentation Fault。"
+    },
+    {
+      "id": "deadlock",
+      "name": "死锁",
+      "paradigm": "parallel",
+      "level": 4,
+      "hp": 80, "mp": 0,
+      "atk": 10, "def": 20, "spd": 1,
+      "skills": ["lock_hold"],
+      "color": 0x2c3e50,
+      "description": "两个进程互相等待，谁也不让谁。"
+    },
+    {
+      "id": "zero_bug",
+      "name": "零号Bug",
+      "paradigm": "none",
+      "level": 10,
+      "hp": 500, "mp": 200,
+      "atk": 30, "def": 15, "spd": 7,
+      "skills": ["null_wave", "infinite_loop", "stack_overflow", "memory_corruption"],
+      "color": 0x000000,
+      "description": "存在于所有代码诞生之前的原始错误。它不是某个程序的bug，而是bug本身。"
+    }
+  ]
+}
