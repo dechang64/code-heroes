@@ -104,6 +104,7 @@ const Input = {
   pressedConfirm() { return this.pendingConfirm || (this.confirmPressed && !this.prevConfirmPressed); },
   pressedMenu() { return this.pendingMenu || (this.menuButton && !this.prevMenuButton); },
   battleNavUp: false, battleNavDown: false, prevBattleNavUp: false, prevBattleNavDown: false,
+  prevBattleNavLeft: false, prevBattleNavRight: false,
   update() {
     this.prevActionPressed = this.actionPressed;
     this.prevConfirmPressed = this.confirmPressed;
@@ -848,6 +849,9 @@ function updateBattle(dt) {
   if (b.greenluoShake > 0) b.greenluoShake -= dt;
   b.damageNumbers = b.damageNumbers.filter(d => { d.y -= 1; d.life -= dt; return d.life > 0; });
 
+  // 胜利/失败后不再处理回合
+  if (b.turn === 'win' || b.turn === 'lose') return;
+
   // 处理状态效果
   if (b.turnOrder === 'player') {
     processStatusEffects(b.member, dt);
@@ -867,12 +871,12 @@ function updateBattle(dt) {
     const dirY = Input.getDirY();
     if (dirY < 0 && !Input.prevBattleNavUp) {
       if (b.battleMenuPage === 0) b.selectedAction = (b.selectedAction - 1 + skills.length) % skills.length;
-      else if (b.battleMenuPage === 1) b.selectedAction = (b.selectedAction - 1 + b.greenluo.skills.length) % b.greenluo.skills.length;
+      else if (b.battleMenuPage === 1 && b.greenluo) b.selectedAction = (b.selectedAction - 1 + b.greenluo.skills.length) % b.greenluo.skills.length;
       else if (b.battleMenuPage === 2) b.selectedAction = (b.selectedAction - 1 + Game.player.inventory.length) % Math.max(1, Game.player.inventory.length);
     }
     if (dirY > 0 && !Input.prevBattleNavDown) {
       if (b.battleMenuPage === 0) b.selectedAction = (b.selectedAction + 1) % skills.length;
-      else if (b.battleMenuPage === 1) b.selectedAction = (b.selectedAction + 1) % b.greenluo.skills.length;
+      else if (b.battleMenuPage === 1 && b.greenluo) b.selectedAction = (b.selectedAction + 1) % b.greenluo.skills.length;
       else if (b.battleMenuPage === 2) b.selectedAction = (b.selectedAction + 1) % Math.max(1, Game.player.inventory.length);
     }
 
@@ -1025,6 +1029,14 @@ function executePlayerAction(b, skill) {
     b.log.push(`老陈使用${skill.name}，敌人防御降低！`);
     // 同时解除玩家异常
     b.member.statusEffects = b.member.statusEffects.filter(s => s.type !== 'npe' && s.type !== 'deadlock');
+    // Phase 3: 断点术对Boss造成伤害
+    if (b.enemy.phase3 && skill.id === 'breakpoint') {
+      const dmg = calculateDamage(b.member, b.enemy, 1.5);
+      b.enemy.hp = Math.max(0, b.enemy.hp - dmg);
+      b.enemyShake = 300;
+      b.damageNumbers.push({ x: 200, y: 140, value: dmg, life: 1000, color: '#ff4444' });
+      b.log.push(`断点术命中要害！造成${dmg}伤害！`);
+    }
   } else if (skill.type === 'cleanse') {
     b.member.statusEffects = [];
     b.log.push('老陈释放了内存，所有异常解除！');
@@ -1229,7 +1241,8 @@ function renderBattle() {
     ctx.fillText('VICTORY!', CW / 2, CH / 2);
     ctx.font = '12px Courier New'; ctx.fillStyle = '#ccc';
     ctx.fillText('点击确认返回', CW / 2, CH / 2 + 30);
-    if (Input.pressedConfirm()) {
+    b.winTimer = (b.winTimer || 0) + dt;
+    if (b.winTimer > 500 && Input.pressedConfirm()) {
       Game.player.hp = b.member.hp; Game.player.mp = b.member.mp;
       if (b.greenluo) { Game.greenluo.hp = b.greenluo.hp; Game.greenluo.mp = b.greenluo.mp; }
       Game.battle = null; Game.scene = 'map';
@@ -1241,7 +1254,8 @@ function renderBattle() {
     ctx.fillText('DEFEATED...', CW / 2, CH / 2);
     ctx.font = '12px Courier New'; ctx.fillStyle = '#ccc';
     ctx.fillText('点击确认从存档点重来', CW / 2, CH / 2 + 30);
-    if (Input.pressedConfirm()) {
+    b.loseTimer = (b.loseTimer || 0) + dt;
+    if (b.loseTimer > 500 && Input.pressedConfirm()) {
       loadGame();
       Game.battle = null; Game.scene = 'map';
     }
