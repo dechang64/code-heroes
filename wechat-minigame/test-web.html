@@ -103,8 +103,7 @@ _canvas.addEventListener('mouseup', (e) => {
   if (wx._touchEnd) wx._touchEnd({ touches: [] });
 });
 
-// canvas.requestAnimationFrame 兼容
-_canvas.requestAnimationFrame = (cb) => requestAnimationFrame(cb);
+// requestAnimationFrame — 小游戏用全局函数，不需要挂在canvas上
 </script>
 
 <script src="game.js"></script>

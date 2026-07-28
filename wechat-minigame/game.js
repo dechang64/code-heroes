@@ -7,9 +7,16 @@
 const canvas = wx.createCanvas();
 const ctx = canvas.getContext('2d');
 
-// 屏幕尺寸（竖屏模式，适配手机）
+// 屏幕尺寸（物理像素，用于渲染）
 const SW = canvas.width;
 const SH = canvas.height;
+
+// 逻辑屏幕尺寸（用于触摸区域判断）
+// touch.clientX/Y 是逻辑像素，canvas.width/height 是物理像素
+const sysInfo = wx.getSystemInfoSync();
+const dpr = sysInfo.pixelRatio || (SW / sysInfo.windowWidth);
+const LW = sysInfo.windowWidth;   // 逻辑宽度（如375）
+const LH = sysInfo.windowHeight;  // 逻辑高度（如667）
 
 // 内部渲染分辨率（横版游戏，按比例缩放到屏幕）
 const CW = 640;
@@ -51,6 +58,8 @@ const Input = {
   // 确认键
   confirmPressed: false,
   prevConfirmPressed: false,
+  // 待处理的确认点击（解决快速点击在帧间丢失的问题）
+  pendingConfirm: false,
 
   // 触摸区域定义（在屏幕坐标系中）
   // 左半屏：虚拟摇杆
@@ -62,17 +71,25 @@ const Input = {
       for (const touch of e.touches) {
         const tx = touch.clientX;
         const ty = touch.clientY;
+        // 调试：记录最后一次触摸坐标
+        this.lastTouchX = tx;
+        this.lastTouchY = ty;
+        this.touchLog = 'start ' + tx + ',' + ty + ' LW=' + LW;
 
         // 左半屏 → 摇杆
-        if (tx < SW / 2) {
+        if (tx < LW / 2) {
+          console.log('[INPUT] joystick start at', tx, ty, 'LW=', LW);
           this.joystick.active = true;
           this.joystick.startX = tx;
           this.joystick.startY = ty;
           this.joystick.dx = 0;
           this.joystick.dy = 0;
         } else {
-          // 右半屏 → 确认/动作按钮
+          // 右半屏 → 确认
+          console.log('[INPUT] CONFIRM at', tx, ty, 'LW=', LW);
           this.confirmPressed = true;
+          this.pendingConfirm = true;
+          this.touchLog += ' CONFIRM';
         }
       }
     });
@@ -80,7 +97,7 @@ const Input = {
     wx.onTouchMove((e) => {
       if (this.joystick.active) {
         for (const touch of e.touches) {
-          if (touch.clientX < SW / 2) {
+          if (touch.clientX < LW / 2) {
             this.joystick.dx = touch.clientX - this.joystick.startX;
             this.joystick.dy = touch.clientY - this.joystick.startY;
           }
@@ -89,17 +106,16 @@ const Input = {
     });
 
     wx.onTouchEnd((e) => {
-      // 检查是否所有触摸都结束了
+      this.touchLog = 'end touches=' + e.touches.length;
       if (e.touches.length === 0) {
         this.joystick.active = false;
         this.joystick.dx = 0;
         this.joystick.dy = 0;
         this.confirmPressed = false;
       } else {
-        // 还有触摸点，检查左半屏是否还有
         let leftActive = false;
         for (const touch of e.touches) {
-          if (touch.clientX < SW / 2) {
+          if (touch.clientX < LW / 2) {
             leftActive = true;
             this.joystick.dx = touch.clientX - this.joystick.startX;
             this.joystick.dy = touch.clientY - this.joystick.startY;
@@ -110,10 +126,9 @@ const Input = {
           this.joystick.dx = 0;
           this.joystick.dy = 0;
         }
-        // 检查右半屏
         let rightActive = false;
         for (const touch of e.touches) {
-          if (touch.clientX >= SW / 2) rightActive = true;
+          if (touch.clientX >= LW / 2) rightActive = true;
         }
         if (!rightActive) {
           this.confirmPressed = false;
@@ -140,7 +155,7 @@ const Input = {
 
   // 确认键按下单次触发
   pressedConfirm() {
-    return this.confirmPressed && !this.prevConfirmPressed;
+    return this.pendingConfirm || (this.confirmPressed && !this.prevConfirmPressed);
   },
 
   // 战斗菜单上下选择（基于摇杆Y方向单次触发）
@@ -152,6 +167,8 @@ const Input = {
   update() {
     this.prevActionPressed = this.actionPressed;
     this.prevConfirmPressed = this.confirmPressed;
+    // 清除pendingConfirm（已被本帧消费）
+    this.pendingConfirm = false;
 
     // 战斗菜单导航
     const dy = this.getDirY();
@@ -171,6 +188,9 @@ const Game = {
   dialogue: null,
   battle: null,
   camera: { x: 0, y: 0 },
+  toast: null,        // 临时提示消息
+  toastTimer: 0,      // 倒计时（ms）
+  helpTimer: 3000,    // 开场帮助提示倒计时
 };
 
 // ─── 地图配置 ───
@@ -273,14 +293,35 @@ function updateMap(dt) {
 
   // NPC交互
   if (Input.pressedConfirm()) {
+    let foundNPC = false;
     for (const npc of NPCS) {
       const dist = Math.hypot(p.x - npc.x, p.y - npc.y);
       if (dist < 60) {
         triggerNPC(npc);
+        foundNPC = true;
         break;
       }
     }
+    if (!foundNPC) {
+      // 没找到NPC，给提示
+      let nearestNPC = null;
+      let nearestDist = Infinity;
+      for (const npc of NPCS) {
+        const d = Math.hypot(p.x - npc.x, p.y - npc.y);
+        if (d < nearestDist) { nearestDist = d; nearestNPC = npc; }
+      }
+      if (nearestNPC) {
+        const dir = nearestNPC.x > p.x ? '右' : (nearestNPC.x < p.x ? '左' : '');
+        const dirV = nearestNPC.y > p.y ? '下' : (nearestNPC.y < p.y ? '上' : '');
+        Game.toast = '附近没有人。往' + dir + dirV + '走找' + nearestNPC.label;
+        Game.toastTimer = 2000;
+      }
+    }
   }
+
+  // toast倒计时
+  if (Game.toastTimer > 0) Game.toastTimer -= dt;
+  if (Game.helpTimer > 0) Game.helpTimer -= dt;
 
   // 随机遭遇战
   if (p.moving && Math.random() < 0.003) {
@@ -388,6 +429,77 @@ function renderMap() {
   ctx.beginPath();
   ctx.arc(px - 3, py - 3, 3, 0, Math.PI * 2);
   ctx.fill();
+
+  // NPC方向指示箭头（NPC不在屏幕内时）
+  for (const npc of NPCS) {
+    const nsx = npc.x - cam.x;
+    const nsy = npc.y - cam.y;
+    if (nsx >= 0 && nsx <= CW && nsy >= 0 && nsy <= CH) continue; // 在屏幕内，不画箭头
+
+    // 计算箭头位置（屏幕边缘）
+    const cx = CW / 2, cy = CH / 2;
+    const dx = nsx - cx, dy = nsy - cy;
+    const angle = Math.atan2(dy, dx);
+    // 箭头放在屏幕边缘内侧
+    const margin = 30;
+    let ax, ay;
+    // 求射线与矩形边缘交点
+    const tanA = Math.abs(dx) < 0.01 ? Infinity : Math.tan(angle);
+    const ratio = Math.abs(dx) < 0.01 ? Infinity : Math.abs(dy) / Math.abs(dx);
+    if (Math.isFinite(tanA) && ratio < (CH / 2 - margin) / (CW / 2 - margin)) {
+      // 与左右边相交
+      ax = dx > 0 ? CW - margin : margin;
+      ay = cy + (ax - cx) * tanA;
+    } else {
+      // 与上下边相交
+      ay = dy > 0 ? CH - margin : margin;
+      ax = cx + (ay - cy) / tanA;
+    }
+
+    ctx.save();
+    ctx.translate(ax, ay);
+    ctx.rotate(angle);
+    ctx.fillStyle = npc.name === 'greenluo' ? 'rgba(46,204,113,0.8)' : 'rgba(205,133,63,0.8)';
+    ctx.beginPath();
+    ctx.moveTo(12, 0);
+    ctx.lineTo(-6, -7);
+    ctx.lineTo(-6, 7);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+
+    // NPC名字小标签
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fillRect(ax - 18, ay + 10, 36, 12);
+    ctx.fillStyle = '#ffd700';
+    ctx.font = '9px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText(npc.label, ax, ay + 19);
+  }
+
+  // toast提示（确认但附近没人时）
+  if (Game.toast && Game.toastTimer > 0) {
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,0.8)';
+    ctx.fillRect(CW / 2 - 140, CH - 70, 280, 30);
+    ctx.fillStyle = '#ffd700';
+    ctx.font = '12px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText(Game.toast, CW / 2, CH - 50);
+    ctx.restore();
+  }
+
+  // 开场帮助提示
+  if (Game.helpTimer > 0) {
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,0.7)';
+    ctx.fillRect(CW / 2 - 160, CH - 40, 320, 28);
+    ctx.fillStyle = '#fff';
+    ctx.font = '11px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText('左半屏移动 | 右半屏确认 | 找NPC对话', CW / 2, CH - 22);
+    ctx.restore();
+  }
 }
 
 // ════════════════════════════════════════════════════════════
@@ -832,9 +944,29 @@ function renderBattle() {
 // ════════════════════════════════════════════════════════════
 
 function renderTouchControls() {
-  // 只在地图和战斗场景显示
+  // 调试信息（左上角）
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.7)';
+  ctx.fillRect(0, 0, SW, 40);
+  ctx.fillStyle = '#0f0';
+  ctx.font = '12px Courier New';
+  ctx.textAlign = 'left';
+  ctx.fillText('SW=' + SW + ' LW=' + LW + ' scene=' + Game.scene, 5, 15);
+  ctx.fillText('touch: ' + (Input.touchLog || 'none'), 5, 30);
+  ctx.fillText('player: ' + Math.round(Game.player.x) + ',' + Math.round(Game.player.y), 5, 45);
+  ctx.restore();
+
+  // 中线（左半屏/右半屏分界线）
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255,0,0,0.3)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(LW / 2, 0);
+  ctx.lineTo(LW / 2, LH);
+  ctx.stroke();
+  ctx.restore();
+
   if (Game.scene === 'dialogue') {
-    // 对话场景：右下角显示"点击继续"提示
     return;
   }
 
@@ -945,7 +1077,7 @@ function gameLoop(time) {
     ctx.font = '14px Courier New';
     ctx.fillStyle = '#888';
     ctx.fillText('加载中...', SW / 2, SH / 2 + 20);
-    canvas.requestAnimationFrame(gameLoop);
+    requestAnimationFrame(gameLoop);
     return;
   }
 
@@ -975,11 +1107,11 @@ function gameLoop(time) {
   renderTouchControls();
 
   Input.update();
-  canvas.requestAnimationFrame(gameLoop);
+  requestAnimationFrame(gameLoop);
 }
 
 // ─── 启动 ───
 loadImages().then(() => {
   loaded = true;
-  canvas.requestAnimationFrame(gameLoop);
+  requestAnimationFrame(gameLoop);
 });
