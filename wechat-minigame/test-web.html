@@ -46,6 +46,13 @@ window.wx = {
   _canvas: _canvas,
   createCanvas() { return _canvas; },
   createImage() { return new Image(); },
+  getSystemInfoSync() {
+    return {
+      windowWidth: _canvas.width,
+      windowHeight: _canvas.height,
+      pixelRatio: 1,
+    };
+  },
   _touchStart: null,
   _touchMove: null,
   _touchEnd: null,

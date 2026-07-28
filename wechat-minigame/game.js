@@ -18,9 +18,9 @@ const dpr = sysInfo.pixelRatio || (SW / sysInfo.windowWidth);
 const LW = sysInfo.windowWidth;   // 逻辑宽度（如375）
 const LH = sysInfo.windowHeight;  // 逻辑高度（如667）
 
-// 内部渲染分辨率（横版游戏，按比例缩放到屏幕）
-const CW = 640;
-const CH = 480;
+// 内部渲染分辨率（竖版游戏，按比例缩放到屏幕）
+const CW = 400;
+const CH = 640;
 const scale = Math.min(SW / CW, SH / CH);
 const offsetX = (SW - CW * scale) / 2;
 const offsetY = (SH - CH * scale) / 2;
@@ -542,21 +542,21 @@ function renderDialogue() {
   const d = Game.dialogue;
   if (!d) return;
 
-  const boxY = CH - 140;
+  const boxY = CH - 160;
   ctx.fillStyle = 'rgba(10, 10, 30, 0.92)';
-  ctx.fillRect(0, boxY, CW, 140);
+  ctx.fillRect(0, boxY, CW, 160);
 
   ctx.strokeStyle = '#ffd700';
   ctx.lineWidth = 2;
-  ctx.strokeRect(2, boxY + 2, CW - 4, 136);
+  ctx.strokeRect(2, boxY + 2, CW - 4, 156);
 
-  // 立绘
+  // 立绘（左侧）
   const portraitKey = d.portrait || 'laochen';
   if (IMAGES[portraitKey]) {
     const img = IMAGES[portraitKey];
-    const pSize = 120;
-    const pX = 20;
-    const pY = boxY - 80;
+    const pSize = 100;
+    const pX = 10;
+    const pY = boxY - 50;
 
     ctx.save();
     ctx.beginPath();
@@ -597,19 +597,19 @@ function renderDialogue() {
   ctx.fillStyle = '#ffd700';
   ctx.font = 'bold 14px Courier New';
   ctx.textAlign = 'left';
-  ctx.fillText(d.speaker, 160, boxY + 28);
+  ctx.fillText(d.speaker, 130, boxY + 28);
 
   ctx.strokeStyle = '#ffd700';
   ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.moveTo(160, boxY + 32);
-  ctx.lineTo(160 + ctx.measureText(d.speaker).width + 10, boxY + 32);
+  ctx.moveTo(130, boxY + 32);
+  ctx.lineTo(130 + ctx.measureText(d.speaker).width + 10, boxY + 32);
   ctx.stroke();
 
   const text = d.lines[d.lineIndex].substring(0, Math.floor(d.charIndex));
   ctx.fillStyle = '#e0e0e0';
   ctx.font = '13px Courier New';
-  wrapText(ctx, text, 160, boxY + 55, CW - 180, 20);
+  wrapText(ctx, text, 130, boxY + 55, CW - 145, 20);
 
   if (d.done) {
     const blink = Math.floor(Date.now() / 400) % 2;
@@ -723,7 +723,7 @@ function updateBattle(dt) {
           const dmg = calculateDamage(b.member, b.enemy, skill.power);
           b.enemy.hp = Math.max(0, b.enemy.hp - dmg);
           b.enemyShake = 300;
-          b.damageNumbers.push({ x: 480, y: 160, value: dmg, life: 1000, color: '#ff4444' });
+          b.damageNumbers.push({ x: 200, y: 140, value: dmg, life: 1000, color: '#ff4444' });
           b.log.push('老陈使用' + skill.name + '，造成' + dmg + '伤害！');
 
           if (b.enemy.hp <= 0) {
@@ -743,7 +743,7 @@ function updateBattle(dt) {
       const dmg = calculateDamage(b.enemy, b.member, 1.0);
       b.member.hp = Math.max(0, b.member.hp - dmg);
       b.playerShake = 300;
-      b.damageNumbers.push({ x: 160, y: 280, value: dmg, life: 1000, color: '#ff6644' });
+      b.damageNumbers.push({ x: 200, y: 320, value: dmg, life: 1000, color: '#ff6644' });
       b.log.push(b.enemy.name + '攻击，造成' + dmg + '伤害！');
 
       if (b.member.hp <= 0) {
@@ -778,13 +778,13 @@ function renderBattle() {
   ctx.fillStyle = 'rgba(0,0,0,0.2)';
   ctx.fillRect(0, 0, CW, CH);
 
-  // 敌人
-  const enemyX = 480, enemyY = 180;
+  // 敌人（上方居中）
+  const enemyX = 200, enemyY = 160;
   const eshake = b.enemyShake > 0 ? Math.sin(b.animFrame * 0.8) * 6 : 0;
 
   if (IMAGES.bug) {
     const img = IMAGES.bug;
-    const eSize = 180;
+    const eSize = 140;
     const ratio = img.width / img.height;
     let dw = eSize, dh = eSize;
     if (ratio > 1) { dh = eSize; dw = eSize * ratio; } else { dw = eSize; dh = eSize / ratio; }
@@ -815,13 +815,13 @@ function renderBattle() {
   ctx.font = '9px Courier New';
   ctx.fillText(b.enemy.hp + '/' + b.enemy.maxHp, enemyX, enemyY - 18);
 
-  // 玩家
-  const playerX = 160, playerY = 300;
+  // 玩家（下方居中）
+  const playerX = 200, playerY = 340;
   const pshake = b.playerShake > 0 ? Math.sin(b.animFrame * 0.8) * 5 : 0;
 
   if (IMAGES.laochen) {
     const img = IMAGES.laochen;
-    const pSize = 180;
+    const pSize = 140;
     const ratio = img.width / img.height;
     let dw = pSize, dh = pSize;
     if (ratio > 1) { dh = pSize; dw = pSize * ratio; } else { dw = pSize; dh = pSize / ratio; }
@@ -861,14 +861,14 @@ function renderBattle() {
   ctx.font = '8px Courier New';
   ctx.fillText('HP ' + b.member.hp + '/' + b.member.maxHp + '  MP ' + b.member.mp + '/' + b.member.maxMp, playerX, playerY + 73);
 
-  // 技能菜单
+  // 技能菜单（底部全宽）
   if (b.turn === 'player') {
-    const menuX = 20, menuY = 380;
+    const menuX = 10, menuY = 440;
     ctx.fillStyle = 'rgba(10,10,30,0.9)';
-    ctx.fillRect(menuX, menuY, 200, 90);
+    ctx.fillRect(menuX, menuY, CW - 20, 80);
     ctx.strokeStyle = '#ffd700';
     ctx.lineWidth = 2;
-    ctx.strokeRect(menuX, menuY, 200, 90);
+    ctx.strokeRect(menuX, menuY, CW - 20, 80);
 
     ctx.fillStyle = '#ffd700';
     ctx.font = 'bold 11px Courier New';
@@ -881,7 +881,7 @@ function renderBattle() {
       const ay = menuY + 30 + i * 15;
       if (i === b.selectedAction) {
         ctx.fillStyle = 'rgba(255,215,0,0.15)';
-        ctx.fillRect(menuX + 4, ay - 10, 192, 14);
+        ctx.fillRect(menuX + 4, ay - 10, CW - 28, 14);
         ctx.fillStyle = '#ffd700';
       } else {
         ctx.fillStyle = '#ccc';
@@ -890,13 +890,13 @@ function renderBattle() {
     }
   }
 
-  // 战斗日志
-  const logX = 240, logY = 380;
+  // 战斗日志（技能菜单上方）
+  const logX = 10, logY = 530;
   ctx.fillStyle = 'rgba(10,10,30,0.85)';
-  ctx.fillRect(logX, logY, 380, 90);
+  ctx.fillRect(logX, logY, CW - 20, 70);
   ctx.strokeStyle = '#555';
   ctx.lineWidth = 1;
-  ctx.strokeRect(logX, logY, 380, 90);
+  ctx.strokeRect(logX, logY, CW - 20, 70);
 
   ctx.fillStyle = '#888';
   ctx.font = '9px Courier New';
