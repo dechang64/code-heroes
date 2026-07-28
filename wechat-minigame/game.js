@@ -310,8 +310,8 @@ const Game = {
   flags: { greenluoJoined: false, bossPhase: 0, bossDefeated: false },
   dialogue: null, battle: null, camera: { x: 0, y: 0 },
   toast: null, toastTimer: 0, helpTimer: 5000,
-  menuTab: 0, // 0=技能 1=装备 2=道具
-  battleMenuPage: 0, // 0=老陈技能 1=绿萝技能 2=道具
+  menuTab: 0, battleMenuPage: 0,
+  nearbyNPC: null,  // 当前可交互的NPC
 };
 
 // ─── 存档系统 ───
@@ -508,25 +508,31 @@ function updateMap(dt) {
     return;
   }
 
-  // NPC交互
-  if (Input.pressedConfirm()) {
+  // NPC交互：检测附近NPC + 直接点击NPC
+  Game.nearbyNPC = null;
+  let nearestNPC = null, nearestDist = Infinity;
+  for (const npc of NPCS) {
+    const dist = Math.hypot(p.x - npc.x, p.y - npc.y);
+    if (dist < 80 && dist < nearestDist) { nearestDist = dist; nearestNPC = npc; }
+  }
+  if (nearestNPC) Game.nearbyNPC = nearestNPC;
+
+  // 点击NPC触发对话（将触摸坐标转为游戏坐标）
+  if (Input.pendingConfirm || (Input.confirmPressed && !Input.prevConfirmPressed)) {
+    // 触摸坐标→游戏坐标
+    const tdx = Input.lastTouchX || 0, tdy = Input.lastTouchY || 0;
+    const touchGameX = (tdx * dpr - offsetX) / scale;
+    const touchGameY = (tdy * dpr - offsetY) / scale;
     let foundNPC = false;
     for (const npc of NPCS) {
-      const dist = Math.hypot(p.x - npc.x, p.y - npc.y);
-      if (dist < 60) { triggerNPC(npc); foundNPC = true; break; }
+      const nsx = npc.x - Game.camera.x, nsy = npc.y - Game.camera.y;
+      const tapDist = Math.hypot(touchGameX - nsx, touchGameY - (nsy - 20));
+      if (tapDist < 30) { triggerNPC(npc); foundNPC = true; break; }
     }
-    if (!foundNPC) {
-      let nearestNPC = null, nearestDist = Infinity;
-      for (const npc of NPCS) {
-        const d = Math.hypot(p.x - npc.x, p.y - npc.y);
-        if (d < nearestDist) { nearestDist = d; nearestNPC = npc; }
-      }
-      if (nearestNPC) {
-        const dir = nearestNPC.x > p.x ? '右' : (nearestNPC.x < p.x ? '左' : '');
-        const dirV = nearestNPC.y > p.y ? '下' : (nearestNPC.y < p.y ? '上' : '');
-        Game.toast = '附近没有人。往' + dir + dirV + '走找' + nearestNPC.label;
-        Game.toastTimer = 2000;
-      }
+    // 也可以通过附近+确认键交互
+    if (!foundNPC && Game.nearbyNPC) {
+      triggerNPC(Game.nearbyNPC);
+      foundNPC = true;
     }
   }
 
@@ -601,6 +607,17 @@ function renderMap() {
     ctx.strokeStyle = '#ffd700'; ctx.lineWidth = 1; ctx.strokeRect(sx - 20, sy - 28, 40, 14);
     ctx.fillStyle = '#ffd700'; ctx.font = '10px Courier New'; ctx.textAlign = 'center';
     ctx.fillText(npc.label, sx, sy - 18);
+    // 附近时显示"对话"气泡
+    if (Game.nearbyNPC === npc) {
+      const bounce = Math.sin(Date.now() / 200) * 3;
+      ctx.fillStyle = 'rgba(255,215,0,0.9)';
+      ctx.beginPath();
+      ctx.roundRect ? ctx.roundRect(sx - 22, sy - 55 + bounce, 44, 18, 4) : ctx.rect(sx - 22, sy - 55 + bounce, 44, 18);
+      ctx.fill();
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.stroke();
+      ctx.fillStyle = '#000'; ctx.font = 'bold 10px Courier New';
+      ctx.fillText('对话', sx, sy - 42 + bounce);
+    }
   }
   // 存档点
   for (const sp of SAVE_POINTS) {
