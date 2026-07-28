@@ -48,11 +48,13 @@ const Input = {
       for (const touch of e.touches) {
         const tx = touch.clientX, ty = touch.clientY;
         this.lastTouchX = tx; this.lastTouchY = ty;
-        this.touchLog = 'start ' + tx + ',' + ty;
+        this.touchLog = 'start ' + Math.round(tx) + ',' + Math.round(ty) + ' LW=' + LW;
+        console.log('[INPUT] touchStart', Math.round(tx), Math.round(ty), 'LW=' + LW);
         if (tx < LW / 2) {
           this.joystick.active = true;
           this.joystick.startX = tx; this.joystick.startY = ty;
           this.joystick.dx = 0; this.joystick.dy = 0;
+          console.log('[INPUT] joystick start');
         } else {
           // 右上角 = 菜单按钮
           if (ty < LH * 0.15) {
@@ -93,12 +95,12 @@ const Input = {
   },
   getDirX() {
     if (!this.joystick.active) return 0;
-    const t = 20;
+    const t = 15;
     return this.joystick.dx > t ? 1 : (this.joystick.dx < -t ? -1 : 0);
   },
   getDirY() {
     if (!this.joystick.active) return 0;
-    const t = 20;
+    const t = 15;
     return this.joystick.dy > t ? 1 : (this.joystick.dy < -t ? -1 : 0);
   },
   pressedConfirm() { return this.pendingConfirm || (this.confirmPressed && !this.prevConfirmPressed); },
@@ -866,8 +868,24 @@ function updateBattle(dt) {
   if (b.greenluoShake > 0) b.greenluoShake -= dt;
   b.damageNumbers = b.damageNumbers.filter(d => { d.y -= 1; d.life -= dt; return d.life > 0; });
 
-  // 胜利/失败后不再处理回合
-  if (b.turn === 'win' || b.turn === 'lose') return;
+  // 胜利/失败处理（放在updateBattle里，不放在render里）
+  if (b.turn === 'win') {
+    b.winTimer = (b.winTimer || 0) + dt;
+    if (b.winTimer > 500 && Input.pressedConfirm()) {
+      Game.player.hp = b.member.hp; Game.player.mp = b.member.mp;
+      if (b.greenluo) { Game.greenluo.hp = b.greenluo.hp; Game.greenluo.mp = b.greenluo.mp; }
+      Game.battle = null; Game.scene = 'map';
+    }
+    return; // 胜利后不处理回合
+  }
+  if (b.turn === 'lose') {
+    b.loseTimer = (b.loseTimer || 0) + dt;
+    if (b.loseTimer > 500 && Input.pressedConfirm()) {
+      loadGame();
+      Game.battle = null; Game.scene = 'map';
+    }
+    return;
+  }
 
   // 处理状态效果
   if (b.turnOrder === 'player') {
@@ -1251,31 +1269,20 @@ function renderBattle() {
     ctx.fillText(prefix + d.value, d.x, d.y);
   }
 
-  // 胜利/失败
+  // 胜利/失败画面（纯渲染，输入处理在updateBattle里）
   if (b.turn === 'win') {
     ctx.fillStyle = 'rgba(0,0,0,0.7)'; ctx.fillRect(0, 0, CW, CH);
     ctx.fillStyle = '#ffd700'; ctx.font = 'bold 36px Courier New'; ctx.textAlign = 'center';
     ctx.fillText('VICTORY!', CW / 2, CH / 2);
     ctx.font = '12px Courier New'; ctx.fillStyle = '#ccc';
-    ctx.fillText('点击确认返回', CW / 2, CH / 2 + 30);
-    b.winTimer = (b.winTimer || 0) + dt;
-    if (b.winTimer > 500 && Input.pressedConfirm()) {
-      Game.player.hp = b.member.hp; Game.player.mp = b.member.mp;
-      if (b.greenluo) { Game.greenluo.hp = b.greenluo.hp; Game.greenluo.mp = b.greenluo.mp; }
-      Game.battle = null; Game.scene = 'map';
-    }
+    ctx.fillText('点击右下角确认返回', CW / 2, CH / 2 + 30);
   }
   if (b.turn === 'lose') {
     ctx.fillStyle = 'rgba(0,0,0,0.7)'; ctx.fillRect(0, 0, CW, CH);
     ctx.fillStyle = '#e74c3c'; ctx.font = 'bold 36px Courier New'; ctx.textAlign = 'center';
     ctx.fillText('DEFEATED...', CW / 2, CH / 2);
     ctx.font = '12px Courier New'; ctx.fillStyle = '#ccc';
-    ctx.fillText('点击确认从存档点重来', CW / 2, CH / 2 + 30);
-    b.loseTimer = (b.loseTimer || 0) + dt;
-    if (b.loseTimer > 500 && Input.pressedConfirm()) {
-      loadGame();
-      Game.battle = null; Game.scene = 'map';
-    }
+    ctx.fillText('点击右下角从存档点重来', CW / 2, CH / 2 + 30);
   }
 }
 
@@ -1403,9 +1410,11 @@ function renderMenu() {
 function renderTouchControls() {
   // 调试信息
   ctx.save();
-  ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(0, 0, SW, 20);
+  ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(0, 0, SW, 50);
   ctx.fillStyle = '#0f0'; ctx.font = '10px Courier New'; ctx.textAlign = 'left';
   ctx.fillText('Lv' + Game.player.level + ' ' + Game.scene + ' ' + Math.round(Game.player.x) + ',' + Math.round(Game.player.y), 5, 14);
+  ctx.fillText('joy:' + (Input.joystick.active ? 'ON' : 'off') + ' dx=' + Math.round(Input.joystick.dx) + ' dy=' + Math.round(Input.joystick.dy), 5, 28);
+  ctx.fillText('touch: ' + (Input.touchLog || 'none'), 5, 42);
   ctx.restore();
 
   // 菜单按钮（右上角）
@@ -1463,11 +1472,13 @@ function renderTouchControls() {
     }
     const btnX = SW - 80, btnY = SH - 80;
     ctx.save();
-    ctx.fillStyle = Input.confirmPressed ? 'rgba(255,215,0,0.4)' : 'rgba(255,215,0,0.15)';
-    ctx.beginPath(); ctx.arc(btnX, btnY, 35, 0, Math.PI * 2); ctx.fill();
-    ctx.strokeStyle = 'rgba(255,215,0,0.6)'; ctx.lineWidth = 2; ctx.stroke();
-    ctx.fillStyle = '#ffd700'; ctx.font = 'bold 14px Courier New'; ctx.textAlign = 'center';
-    ctx.fillText('攻击', btnX, btnY + 5); ctx.restore();
+    const isEnd = Game.battle && (Game.battle.turn === 'win' || Game.battle.turn === 'lose');
+    const btnLabel = isEnd ? '确认' : '攻击';
+    ctx.fillStyle = Input.confirmPressed ? 'rgba(255,215,0,0.5)' : 'rgba(255,215,0,0.25)';
+    ctx.beginPath(); ctx.arc(btnX, btnY, 40, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,215,0,0.8)'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.fillStyle = '#ffd700'; ctx.font = 'bold 16px Courier New'; ctx.textAlign = 'center';
+    ctx.fillText(btnLabel, btnX, btnY + 5); ctx.restore();
   }
 }
 
@@ -1506,9 +1517,7 @@ function gameLoop(time) {
 // ─── 启动 ───
 loadImages().then(() => {
   loaded = true;
-  // 尝试加载存档
-  if (loadGame()) {
-    Game.toast = '存档已加载'; Game.toastTimer = 2000;
-  }
+  // 清除旧版存档（v0.3存档可能与v0.4不兼容）
+  try { wx.removeStorageSync('code_heroes_save'); } catch(e) {}
   requestAnimationFrame(gameLoop);
 });
