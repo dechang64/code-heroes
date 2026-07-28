@@ -122,6 +122,7 @@ const Voice = {
   state: 'idle', recognizedText: '', replyText: '', audioCtx: null,
   init() {
     try {
+      if (typeof requirePlugin === 'undefined') { this.available = false; return; }
       this.plugin = requirePlugin('WechatSI');
       this.manager = this.plugin.getRecordRecognitionManager();
       this.manager.onRecognize = (res) => { if (res.result) this.recognizedText = res.result; };
@@ -627,9 +628,9 @@ function renderMap() {
     const tanA = Math.abs(ddx) < 0.01 ? Infinity : Math.tan(angle);
     const ratio = Math.abs(ddx) < 0.01 ? Infinity : Math.abs(ddy) / Math.abs(ddx);
     let ax, ay;
-    if (Math.isFinite(tanA) && ratio < (CH / 2 - margin) / (CW / 2 - margin)) {
+    if (isFinite(tanA) && ratio < (CH / 2 - margin) / (CW / 2 - margin)) {
       ax = ddx > 0 ? CW - margin : margin; ay = cy + (ax - cx) * tanA;
-    } else { ay = ddy > 0 ? CH - margin : margin; ax = cx + (ay - cy) / (Math.isFinite(tanA) ? tanA : 1); }
+    } else { ay = ddy > 0 ? CH - margin : margin; ax = cx + (ay - cy) / (isFinite(tanA) ? tanA : 1); }
     ctx.save(); ctx.translate(ax, ay); ctx.rotate(angle);
     ctx.fillStyle = npc.name === 'greenluo' ? 'rgba(46,204,113,0.8)' : 'rgba(205,133,63,0.8)';
     ctx.beginPath(); ctx.moveTo(12, 0); ctx.lineTo(-6, -7); ctx.lineTo(-6, 7); ctx.closePath(); ctx.fill();
@@ -848,20 +849,20 @@ function updateBattle(dt) {
   b.damageNumbers = b.damageNumbers.filter(d => { d.y -= 1; d.life -= dt; return d.life > 0; });
 
   // 处理状态效果
-  if (b.turn === 'player' && b.turnOrder === 'player') {
+  if (b.turnOrder === 'player') {
     processStatusEffects(b.member, dt);
     processStatusEffects(b.enemy, dt);
     if (b.greenluo) processStatusEffects(b.greenluo, dt);
   }
 
   // 玩家被NPE定身 → 跳过回合
-  if (b.turn === 'player' && b.turnOrder === 'player' && hasStatusEffect(b.member, 'npe')) {
+  if (b.turnOrder === 'player' && hasStatusEffect(b.member, 'npe')) {
     b.log.push('老陈遭遇NullPointerException，无法行动！');
     b.turnOrder = 'greenluo';
     if (!b.greenluo) b.turnOrder = 'enemy';
   }
 
-  if (b.turn === 'player' && b.turnOrder === 'player') {
+  if (b.turnOrder === 'player') {
     const skills = Game.player.skills.map(id => ({ id, ...SKILL_TREE[id] })).filter(s => s.type);
     const dirY = Input.getDirY();
     if (dirY < 0 && !Input.prevBattleNavUp) {
@@ -917,7 +918,7 @@ function updateBattle(dt) {
         }
       }
     }
-  } else if (b.turn === 'greenluo' && b.greenluo && b.turnOrder === 'greenluo') {
+  } else if (b.greenluo && b.turnOrder === 'greenluo') {
     // 绿萝AI自动行动（简单AI）
     b.greenluoTurnTimer = (b.greenluoTurnTimer || 0) + dt;
     if (b.greenluoTurnTimer > 800) {
@@ -939,7 +940,7 @@ function updateBattle(dt) {
       }
       b.turnOrder = 'enemy';
     }
-  } else if (b.turn === 'enemy' || b.turnOrder === 'enemy') {
+  } else if (b.turnOrder === 'enemy') {
     b.enemyTurnTimer -= dt;
     if (b.enemyTurnTimer <= 0) {
       b.enemyTurnTimer = 800;
@@ -1003,6 +1004,11 @@ function executePlayerAction(b, skill) {
     applyStatusEffect(b.member, 'buff_def', 2);
     b.log.push('老陈进入防御姿态！');
   } else if (skill.type === 'attack') {
+    // Phase 3: 只有断点术能造成伤害
+    if (b.enemy.phase3 && skill.id !== 'breakpoint') {
+      b.log.push(`老陈使用${skill.name}，但零号Bug免疫了！需要断点术！`);
+      return;
+    }
     let hits = skill.id === 'recursion' ? 2 : 1;
     for (let i = 0; i < hits; i++) {
       let dmg = calculateDamage(b.member, b.enemy, skill.power);
@@ -1159,7 +1165,7 @@ function renderBattle() {
   }
 
   // 技能菜单
-  if (b.turn === 'player' && b.turnOrder === 'player') {
+  if (b.turnOrder === 'player') {
     const menuX = 10, menuY = 440;
     ctx.fillStyle = 'rgba(10,10,30,0.9)'; ctx.fillRect(menuX, menuY, CW - 20, 80);
     ctx.strokeStyle = '#ffd700'; ctx.lineWidth = 2; ctx.strokeRect(menuX, menuY, CW - 20, 80);
@@ -1261,8 +1267,8 @@ function updateMenu(dt) {
       useItem('health_potion');
     }
   }
-  // 左半屏上滑 = 退出菜单
-  if (Input.joystick.active && Input.getDirY() < -0.5) {
+  // 左半屏大上滑 = 退出菜单（与切标签区分：需>50px）
+  if (Input.joystick.active && Input.joystick.dy < -50) {
     Game.scene = 'map';
   }
 }

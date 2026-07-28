@@ -1,7 +1,9 @@
 {
   "description": "代码群侠传 - 微信小游戏版",
   "packOptions": {
-    "ignore": [],
+    "ignore": [
+      { "type": "folder", "value": "cloudfunctions" }
+    ],
     "include": []
   },
   "setting": {
