@@ -39,24 +39,25 @@ function loadImages() {
 
 // ─── 触摸输入 ───
 const Input = {
-  joystick: { active: false, startX: 0, startY: 0, dx: 0, dy: 0 },
-  actionPressed: false, prevActionPressed: false,
+  joystick: { active: false, startX: 0, startY: 0, dx: 0, dy: 0, touchId: null },
   confirmPressed: false, prevConfirmPressed: false, pendingConfirm: false,
   menuButton: false, prevMenuButton: false, pendingMenu: false,
+  lastTouchX: 0, lastTouchY: 0, touchLog: 'none',
   init() {
     wx.onTouchStart((e) => {
-      for (const touch of e.touches) {
+      const touches = e.changedTouches || e.touches;
+      for (const touch of touches) {
         const tx = touch.clientX, ty = touch.clientY;
         this.lastTouchX = tx; this.lastTouchY = ty;
         this.touchLog = 'start ' + Math.round(tx) + ',' + Math.round(ty) + ' LW=' + LW;
-        console.log('[INPUT] touchStart', Math.round(tx), Math.round(ty), 'LW=' + LW);
         if (tx < LW / 2) {
+          // 左半屏 → 摇杆（记录触摸ID，只跟踪这个手指）
           this.joystick.active = true;
+          this.joystick.touchId = touch.identifier != null ? touch.identifier : 0;
           this.joystick.startX = tx; this.joystick.startY = ty;
           this.joystick.dx = 0; this.joystick.dy = 0;
-          console.log('[INPUT] joystick start');
         } else {
-          // 右上角 = 菜单按钮
+          // 右半屏
           if (ty < LH * 0.15) {
             this.menuButton = true; this.pendingMenu = true;
           } else {
@@ -66,41 +67,43 @@ const Input = {
       }
     });
     wx.onTouchMove((e) => {
-      if (this.joystick.active) {
-        for (const touch of e.touches) {
-          if (touch.clientX < LW / 2) {
-            this.joystick.dx = touch.clientX - this.joystick.startX;
-            this.joystick.dy = touch.clientY - this.joystick.startY;
-          }
+      if (!this.joystick.active) return;
+      // 用changedTouches找到属于摇杆的那个触摸点
+      const touches = e.changedTouches || e.touches;
+      for (const touch of touches) {
+        const id = touch.identifier != null ? touch.identifier : 0;
+        if (id === this.joystick.touchId) {
+          this.joystick.dx = touch.clientX - this.joystick.startX;
+          this.joystick.dy = touch.clientY - this.joystick.startY;
+          break;
         }
       }
     });
     wx.onTouchEnd((e) => {
-      if (e.touches.length === 0) {
-        this.joystick.active = false; this.joystick.dx = 0; this.joystick.dy = 0;
-        this.confirmPressed = false; this.menuButton = false;
-      } else {
-        let leftActive = false, rightActive = false;
-        for (const touch of e.touches) {
-          if (touch.clientX < LW / 2) {
-            leftActive = true;
-            this.joystick.dx = touch.clientX - this.joystick.startX;
-            this.joystick.dy = touch.clientY - this.joystick.startY;
-          } else { rightActive = true; }
+      const touches = e.changedTouches || e.touches;
+      for (const touch of touches) {
+        const id = touch.identifier != null ? touch.identifier : 0;
+        // 摇杆手指抬起 → 停止
+        if (id === this.joystick.touchId) {
+          this.joystick.active = false; this.joystick.dx = 0; this.joystick.dy = 0;
+          this.joystick.touchId = null;
         }
-        if (!leftActive) { this.joystick.active = false; this.joystick.dx = 0; this.joystick.dy = 0; }
-        if (!rightActive) { this.confirmPressed = false; this.menuButton = false; }
+      }
+      // 如果没有触摸点了，清除所有
+      const remaining = e.touches || [];
+      if (remaining.length === 0) {
+        this.confirmPressed = false; this.menuButton = false;
       }
     });
   },
   getDirX() {
     if (!this.joystick.active) return 0;
-    const t = 15;
+    const t = 12;
     return this.joystick.dx > t ? 1 : (this.joystick.dx < -t ? -1 : 0);
   },
   getDirY() {
     if (!this.joystick.active) return 0;
-    const t = 15;
+    const t = 12;
     return this.joystick.dy > t ? 1 : (this.joystick.dy < -t ? -1 : 0);
   },
   pressedConfirm() { return this.pendingConfirm || (this.confirmPressed && !this.prevConfirmPressed); },
@@ -108,7 +111,6 @@ const Input = {
   battleNavUp: false, battleNavDown: false, prevBattleNavUp: false, prevBattleNavDown: false,
   prevBattleNavLeft: false, prevBattleNavRight: false,
   update() {
-    this.prevActionPressed = this.actionPressed;
     this.prevConfirmPressed = this.confirmPressed;
     this.prevMenuButton = this.menuButton;
     this.pendingConfirm = false; this.pendingMenu = false;
