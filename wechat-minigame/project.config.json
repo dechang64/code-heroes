@@ -46,6 +46,7 @@
   "libVersion": "3.7.1",
   "appid": "wx7fc55218c85f1bf2",
   "projectname": "code-heroes",
+  "cloudfunctionRoot": "cloudfunctions/",
   "condition": {},
   "editorSetting": {
     "tabIndent": "insertSpaces",

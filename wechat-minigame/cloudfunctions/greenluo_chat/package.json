@@ -1,0 +1,7 @@
+{
+  "name": "greenluo_chat",
+  "version": "1.0.0",
+  "description": "代码群侠传 - 绿萝AI对话云函数",
+  "main": "index.js",
+  "dependencies": {}
+}

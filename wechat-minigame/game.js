@@ -180,6 +180,108 @@ const Input = {
 };
 Input.init();
 
+// ════════════════════════════════════════════════════════════
+// 语音交互模块（微信同声传译插件 + 云函数）
+// ════════════════════════════════════════════════════════════
+const Voice = {
+  plugin: null,
+  manager: null,
+  available: false,
+  state: 'idle',      // idle | recording | thinking | speaking
+  recognizedText: '',
+  replyText: '',
+  audioCtx: null,
+
+  init() {
+    try {
+      this.plugin = requirePlugin('WechatSI');
+      this.manager = this.plugin.getRecordRecognitionManager();
+      this.manager.onRecognize = (res) => {
+        if (res.result) this.recognizedText = res.result;
+      };
+      this.manager.onStop = (res) => {
+        console.log('[Voice] ASR stop:', res.result);
+        this.state = 'idle';
+        if (res.result && res.result.trim()) {
+          this.recognizedText = res.result.trim();
+          if (this.onRecognized) this.onRecognized(this.recognizedText);
+        }
+      };
+      this.manager.onError = (err) => {
+        console.log('[Voice] ASR error:', err);
+        this.state = 'idle';
+      };
+      this.available = true;
+      console.log('[Voice] WechatSI plugin loaded');
+    } catch(e) {
+      console.log('[Voice] WechatSI not available:', e.message);
+      this.available = false;
+    }
+  },
+
+  startRecord() {
+    if (!this.available || this.state !== 'idle') return false;
+    this.recognizedText = '';
+    this.state = 'recording';
+    this.manager.start({ lang: 'zh_CN', duration: 10000 });
+    console.log('[Voice] ASR start');
+    return true;
+  },
+
+  stopRecord() {
+    if (!this.available || this.state !== 'recording') return;
+    this.manager.stop();
+  },
+
+  async chat(playerText, npcName, scene) {
+    this.state = 'thinking';
+    try {
+      const res = await wx.cloud.callFunction({
+        name: 'greenluo_chat',
+        data: { playerText, npcName, scene },
+      });
+      this.state = 'idle';
+      if (res.result && res.result.reply) {
+        this.replyText = res.result.reply;
+        return res.result.reply;
+      }
+      return null;
+    } catch(e) {
+      console.log('[Voice] Cloud function error:', e.message);
+      this.state = 'idle';
+      return null;
+    }
+  },
+
+  speak(text) {
+    if (!this.available) return;
+    this.state = 'speaking';
+    this.plugin.textToSpeech({
+      lang: 'zh_CN',
+      ttsContent: text,
+      success: (res) => {
+        if (this.audioCtx) { this.audioCtx.destroy(); }
+        this.audioCtx = wx.createInnerAudioContext();
+        this.audioCtx.src = res.filename;
+        this.audioCtx.onEnded = () => { this.state = 'idle'; };
+        this.audioCtx.onError = () => { this.state = 'idle'; };
+        this.audioCtx.play();
+      },
+      fail: () => { this.state = 'idle'; },
+    });
+  },
+
+  stopSpeak() {
+    if (this.audioCtx) {
+      this.audioCtx.stop();
+      this.audioCtx.destroy();
+      this.audioCtx = null;
+    }
+    this.state = 'idle';
+  },
+};
+Voice.init();
+
 // ─── 游戏状态 ───
 const Game = {
   scene: 'map',
@@ -331,8 +433,26 @@ function updateMap(dt) {
 
 function triggerNPC(npc) {
   if (npc.name === 'greenluo') {
-    const key = Game.flags.greenluoJoined ? 'greenluo_repeat' : 'greenluo_intro';
-    Game.dialogue = { ...DIALOGUES[key], lineIndex: 0, charIndex: 0, done: false };
+    if (Voice.available) {
+      // AI对话模式：绿萝可以自由对话
+      Game.dialogue = {
+        mode: 'ai',
+        speaker: '绿萝',
+        portrait: 'greenluo',
+        lines: ['……你读到了我。说话吧，老陈。按住右下角说话。'],
+        lineIndex: 0,
+        charIndex: 0,
+        done: false,
+        aiState: 'idle',
+        recognizedText: '',
+        aiReply: '',
+        history: [],
+      };
+    } else {
+      // 无语音插件，用预设对话
+      const key = Game.flags.greenluoJoined ? 'greenluo_repeat' : 'greenluo_intro';
+      Game.dialogue = { ...DIALOGUES[key], lineIndex: 0, charIndex: 0, done: false };
+    }
     Game.scene = 'dialogue';
   } else if (npc.name === 'npc_merchant') {
     Game.dialogue = { ...DIALOGUES.merchant, lineIndex: 0, charIndex: 0, done: false };
@@ -510,6 +630,90 @@ function updateDialogue(dt) {
   const d = Game.dialogue;
   if (!d) { Game.scene = 'map'; return; }
 
+  // ─── AI对话模式 ───
+  if (d.mode === 'ai') {
+    // 打字机效果
+    if (!d.done && d.lines.length > 0) {
+      d.charIndex += 0.5;
+      if (d.charIndex >= d.lines[d.lineIndex].length) {
+        d.charIndex = d.lines[d.lineIndex].length;
+        d.done = true;
+      }
+    }
+
+    // 语音按钮处理：右下角按住说话
+    if (Input.confirmPressed && d.aiState === 'idle' && d.done) {
+      // 开始录音
+      if (Voice.startRecord()) {
+        d.aiState = 'recording';
+        d.recognizedText = '';
+      }
+    }
+    if (!Input.confirmPressed && d.aiState === 'recording') {
+      // 停止录音，等待ASR结果
+      Voice.stopRecord();
+      d.aiState = 'waiting_asr';
+    }
+
+    // ASR回调
+    if (d.aiState === 'waiting_asr' && Voice.state === 'idle') {
+      if (Voice.recognizedText) {
+        d.recognizedText = Voice.recognizedText;
+        d.aiState = 'thinking';
+        // 添加玩家说的话到对话历史
+        d.lines.push('老陈：' + d.recognizedText);
+        d.lineIndex = d.lines.length - 1;
+        d.charIndex = d.lines[d.lineIndex].length;
+        d.done = true;
+
+        // 调用云函数
+        const sceneContext = '代码江湖·村庄';
+        Voice.chat(d.recognizedText, 'greenluo', sceneContext).then(reply => {
+          if (reply) {
+            d.aiReply = reply;
+            d.lines.push('绿萝：' + reply);
+            d.lineIndex = d.lines.length - 1;
+            d.charIndex = 0;
+            d.done = false;
+            d.aiState = 'speaking';
+            // TTS朗读
+            Voice.speak(reply);
+          } else {
+            // 兜底
+            d.lines.push('绿萝：……我好像没听清。再说一次？');
+            d.lineIndex = d.lines.length - 1;
+            d.charIndex = 0;
+            d.done = false;
+            d.aiState = 'idle';
+          }
+        });
+      } else {
+        d.aiState = 'idle';
+      }
+    }
+
+    // TTS播放完毕
+    if (d.aiState === 'speaking' && Voice.state === 'idle' && d.done) {
+      d.aiState = 'idle';
+    }
+
+    // 左半屏点击 = 离开对话
+    if (Input.pressedConfirm() && d.aiState === 'idle' && d.done) {
+      // 这个逻辑不会执行，因为右半屏被语音按钮占用
+      // 左半屏离开通过 Input.joystick.active 检测
+    }
+
+    // 左半屏上滑 = 离开
+    if (Input.joystick.active && Input.getDirY() < -0.5) {
+      Voice.stopSpeak();
+      Game.flags.greenluoJoined = true;
+      Game.dialogue = null;
+      Game.scene = 'map';
+    }
+    return;
+  }
+
+  // ─── 预设对话模式（原逻辑） ───
   if (!d.done) {
     d.charIndex += 0.5;
     if (d.charIndex >= d.lines[d.lineIndex].length) {
@@ -611,13 +815,82 @@ function renderDialogue() {
   ctx.font = '13px Courier New';
   wrapText(ctx, text, 130, boxY + 55, CW - 145, 20);
 
-  if (d.done) {
-    const blink = Math.floor(Date.now() / 400) % 2;
-    if (blink) {
+  // ─── AI对话模式：语音按钮 + 状态提示 ───
+  if (d.mode === 'ai') {
+    if (d.aiState === 'idle' && d.done) {
+      // 语音按钮（右下角）
+      const btnX = CW - 50;
+      const btnY = CH - 30;
+      ctx.save();
+      ctx.fillStyle = 'rgba(255,215,0,0.2)';
+      ctx.beginPath();
+      ctx.arc(btnX, btnY, 18, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#ffd700';
+      ctx.lineWidth = 2;
+      ctx.stroke();
       ctx.fillStyle = '#ffd700';
-      ctx.font = '12px Courier New';
+      ctx.font = 'bold 10px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText('说话', btnX, btnY + 4);
+      ctx.restore();
+
+      // 离开提示
+      ctx.fillStyle = '#888';
+      ctx.font = '10px Courier New';
+      ctx.textAlign = 'left';
+      ctx.fillText('↑上滑离开', 10, CH - 12);
+    }
+
+    if (d.aiState === 'recording') {
+      ctx.save();
+      ctx.fillStyle = 'rgba(255,80,80,0.3)';
+      ctx.fillRect(0, boxY, CW, 160);
+      ctx.fillStyle = '#ff4444';
+      ctx.font = 'bold 16px Courier New';
+      ctx.textAlign = 'center';
+      // 录音动画
+      const pulse = Math.floor(Date.now() / 300) % 2;
+      ctx.fillText(pulse ? '● 正在听...' : '○ 正在听...', CW / 2, boxY + 80);
+      ctx.font = '11px Courier New';
+      ctx.fillStyle = '#aaa';
+      ctx.fillText('松开发送', CW / 2, boxY + 100);
+      if (Voice.recognizedText) {
+        ctx.fillStyle = '#fff';
+        ctx.font = '12px Courier New';
+        ctx.fillText('"' + Voice.recognizedText + '"', CW / 2, boxY + 120);
+      }
+      ctx.restore();
+    }
+
+    if (d.aiState === 'thinking') {
+      ctx.save();
+      ctx.fillStyle = '#2ecc71';
+      ctx.font = 'bold 14px Courier New';
+      ctx.textAlign = 'center';
+      const dots = '.'.repeat(Math.floor(Date.now() / 400) % 4);
+      ctx.fillText('绿萝思考中' + dots, CW / 2, boxY + 80);
+      ctx.restore();
+    }
+
+    if (d.aiState === 'speaking') {
+      ctx.save();
+      ctx.fillStyle = '#2ecc71';
+      ctx.font = '11px Courier New';
       ctx.textAlign = 'right';
-      ctx.fillText('▼ 点击继续', CW - 20, CH - 20);
+      ctx.fillText('🔊 绿萝说话中', CW - 10, boxY + 14);
+      ctx.restore();
+    }
+  } else {
+    // ─── 预设对话模式：点击继续 ───
+    if (d.done) {
+      const blink = Math.floor(Date.now() / 400) % 2;
+      if (blink) {
+        ctx.fillStyle = '#ffd700';
+        ctx.font = '12px Courier New';
+        ctx.textAlign = 'right';
+        ctx.fillText('▼ 点击继续', CW - 20, CH - 20);
+      }
     }
   }
 }
