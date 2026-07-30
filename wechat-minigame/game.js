@@ -215,27 +215,20 @@ const Voice = {
   lastNpc: null,
 
   init() {
-    // 尝试初始化语音（需要正式AppID + 插件配置）
-    // 如果插件不可用，enabled保持false，游戏用预设对话
-    try {
-      if (typeof wx !== 'undefined' && wx.getRecorderManager) {
-        this.si = wx.getRecorderManager();
-        this.enabled = true;
-        console.log('Voice: 录音管理器初始化成功');
-      } else {
-        this.enabled = false;
-        console.log('Voice: 录音管理器不可用，使用预设对话');
-      }
-    } catch(e) {
-      this.enabled = false;
-      console.log('Voice: 初始化失败', e.message);
-    }
+    // 语音识别(ASR)需要单独配置插件，这里只初始化录音管理器
+    // enabled只有在asr插件可用时才为true
+    this.enabled = false;
+    this.asr = null;
+    this.tts = null;
+    console.log('Voice: 未启用（需要ASR插件配置），游戏使用预设对话');
   },
 
   startRecord() {
     if (!this.enabled || !this.asr) {
-      this.recognizedText = '（语音插件不可用，请用文字对话）';
-      this.state = 'thinking';
+      // 没有ASR插件，直接用兜底回复，不卡在thinking
+      this.aiReply = this.getFallback(this.lastNpc ? this.lastNpc.id : 'greenluo');
+      this.state = 'speaking';
+      this.speak();
       return;
     }
     this.state = 'recording';
