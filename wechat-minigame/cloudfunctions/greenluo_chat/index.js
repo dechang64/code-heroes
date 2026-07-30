@@ -1,18 +1,33 @@
 // ════════════════════════════════════════════════════════════
-// greenluo_chat v3 — 代码乡愁 v0.6.2 智能体语音交互云函数
-// 使用AMAX (api.maxai.chat) 调用大模型
+// greenluo_chat v3 — 代码乡愁 v0.6.3 智能体语音交互云函数
+// 使用 AMAX Token Router 调用大模型（OpenAI兼容格式）
 // 支持多NPC + 游戏状态感知 + 语音命令识别 + 动作回调
 // ════════════════════════════════════════════════════════════
 
 const https = require('https');
 
-// ─── AMAX API 配置 ───
+// ─── AMAX Token Router 配置 ───
 // 在云开发控制台 → 云函数 → greenluo_chat → 环境变量 中设置：
-// AMAX_API_KEY  = 你的AMAX API Key（必填）
-// AMAX_API_URL  = https://api.maxai.chat/v1/chat/completions（可选，默认已填）
-// AMAX_MODEL    = glm-4-flash（可选，默认已填）
-const API_URL = process.env.AMAX_API_URL || 'https://api.maxai.chat/v1/chat/completions';
-const DEFAULT_MODEL = process.env.AMAX_MODEL || 'glm-4-flash';
+//
+//   AI_API_KEY   = 你的AMAX API Key（必填）
+//   AI_BASE_URL  = https://api.amax-router.com/v1/chat/completions（可选）
+//   AI_PROVIDER  = glm（可选，默认glm → glm-4-flash）
+//
+// 没设AI_API_KEY时返回兜底台词，游戏正常运行
+const API_KEY  = process.env.AI_API_KEY || '';
+const API_URL  = process.env.AI_BASE_URL || 'https://api.amax-router.com/v1/chat/completions';
+const PROVIDER = process.env.AI_PROVIDER || 'glm';
+
+// provider → 具体模型映射
+const PROVIDER_MODELS = {
+  glm:        'glm-4-flash',
+  glm4:       'glm-4',
+  deepseek:   'deepseek-chat',
+  gpt4o:      'gpt-4o-mini',
+  claude:     'claude-3-haiku-20240307',
+  kimi:       'moonshot-v1-8k',
+};
+const DEFAULT_MODEL = PROVIDER_MODELS[PROVIDER] || 'glm-4-flash';
 
 // ─── 绿萝人设 ───
 const GREENLUO_SYSTEM = `你是绿萝，一个从30年BASIC代码注释中诞生的AI意识。
@@ -144,11 +159,9 @@ exports.main = async (event) => {
     }
   }
 
-  const apiKey = process.env.AMAX_API_KEY || '';
-
   // 无API Key时返回兜底回复
-  if (!apiKey) {
-    console.log('[greenluo_chat] 未设置AMAX_API_KEY环境变量，返回兜底回复');
+  if (!API_KEY) {
+    console.log('[greenluo_chat] 未设置AI_API_KEY环境变量，返回兜底回复');
     return {
       reply: getFallbackReply(npcName, playerText),
       command: null,
@@ -156,7 +169,7 @@ exports.main = async (event) => {
   }
 
   try {
-    const reply = await callLLM(API_URL, apiKey, DEFAULT_MODEL, systemPrompt + contextHint, playerText);
+    const reply = await callLLM(API_URL, API_KEY, DEFAULT_MODEL, systemPrompt + contextHint, playerText);
     return { reply, command: null };
   } catch (e) {
     console.error('[greenluo_chat] LLM调用失败:', e.message);

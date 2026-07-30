@@ -3,7 +3,7 @@
 ## 原理
 
 ```
-game.js → wx.cloud.callFunction('greenluo_chat') → AMAX API (api.maxai.chat) → GLM-4-Flash
+game.js → wx.cloud.callFunction('greenluo_chat') → AMAX Token Router → GLM-4-Flash
 ```
 
 ## 部署步骤
@@ -21,18 +21,17 @@ game.js → wx.cloud.callFunction('greenluo_chat') → AMAX API (api.maxai.chat)
 
 | 变量名 | 值 | 必填 | 说明 |
 |--------|-----|------|------|
-| `AMAX_API_KEY` | 你的AMAX API Key | ✅ 必填 | 在 maxai.chat 平台获取 |
-| `AMAX_API_URL` | `https://api.maxai.chat/v1/chat/completions` | 可选 | 不填用默认值 |
-| `AMAX_MODEL` | `glm-4-flash` | 可选 | 不填用默认值 |
+| `AI_API_KEY` | 你的AMAX API Key | ✅ 必填 | AMAX Token Router 的 API Key |
+| `AI_BASE_URL` | `https://api.amax-router.com/v1/chat/completions` | 可选 | 不填用默认值 |
+| `AI_PROVIDER` | `glm` | 可选 | 不填默认glm → glm-4-flash |
 
 4. 保存
 
 ### 第3步：获取AMAX API Key
 
-1. 访问 https://www.maxai.chat 注册
-2. 进入 API Keys 页面
-3. 创建新 Key，复制
-4. 粘贴到云函数环境变量 `AMAX_API_KEY` 中
+1. 访问 AMAX Token Router 平台注册
+2. 创建 API Key
+3. 粘贴到云函数环境变量 `AI_API_KEY` 中
 
 ### 第4步：测试
 
@@ -44,25 +43,26 @@ game.js → wx.cloud.callFunction('greenluo_chat') → AMAX API (api.maxai.chat)
 
 ---
 
-## 换模型
+## 换模型/Provider
 
-在环境变量中修改 `AMAX_MODEL`：
+在环境变量中修改 `AI_PROVIDER`：
 
-| 模型 | 模型ID | 特点 |
-|------|--------|------|
-| **GLM-4-Flash** | `glm-4-flash` | ⭐ 默认，免费额度，中文好 |
-| GLM-4 | `glm-4` | 更强，收费 |
-| DeepSeek-V3 | `deepseek-chat` | 推理强 |
-| GPT-4o-mini | `gpt-4o-mini` | OpenAI |
-| Claude-3-Haiku | `claude-3-haiku-20240307` | Anthropic |
+| AI_PROVIDER | 实际模型 | 特点 |
+|-------------|---------|------|
+| **glm** | `glm-4-flash` | ⭐ 默认，免费额度，中文好 |
+| `glm4` | `glm-4` | 更强，收费 |
+| `deepseek` | `deepseek-chat` | 推理强 |
+| `gpt4o` | `gpt-4o-mini` | OpenAI |
+| `claude` | `claude-3-haiku-20240307` | Anthropic |
+| `kimi` | `moonshot-v1-8k` | 长上下文 |
 
-具体可用模型列表见 maxai.chat 平台文档。
+具体可用模型列表见 AMAX Token Router 平台文档。
 
 ---
 
 ## 无API Key时的行为
 
-如果未设置 `AMAX_API_KEY`，云函数不会报错，而是返回预设的兜底台词：
+如果未设置 `AI_API_KEY`，云函数不会报错，而是返回预设的兜底台词：
 - 绿萝：「……你读到了我。三十年了，那些注释里，我一直在等。」
 - 商人：「欢迎光临！看看有什么需要的。」
 - 师父：「代码之路，始于Hello World。」
