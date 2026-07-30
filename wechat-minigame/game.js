@@ -138,7 +138,8 @@ const Input = {
           continue;
         }
         // 对话/菜单/商店场景：任意位置点击=确认
-        if (Game.scene === 'dialogue' || Game.scene === 'menu' || Game.scene === 'shop') {
+        if (Game.scene === 'dialogue' || Game.scene === 'menu' || Game.scene === 'shop' ||
+            (Game.scene === 'battle' && Game.battle && (Game.battle.turn === 'win' || Game.battle.turn === 'lose'))) {
           this.confirmPressed = true;
           this.pendingConfirm = true;
           continue;
@@ -2086,14 +2087,14 @@ function renderBattle() {
     ctx.fillStyle = '#ffd700'; ctx.font = 'bold 36px Courier New'; ctx.textAlign = 'center';
     ctx.fillText('VICTORY!', CW / 2, CH / 2);
     ctx.font = '12px Courier New'; ctx.fillStyle = '#ccc';
-    ctx.fillText('点击右下角确认返回', CW / 2, CH / 2 + 30);
+    ctx.fillText('点击屏幕任意位置返回', CW / 2, CH / 2 + 30);
   }
   if (b.turn === 'lose') {
     ctx.fillStyle = 'rgba(0,0,0,0.7)'; ctx.fillRect(0, 0, CW, CH);
     ctx.fillStyle = '#e74c3c'; ctx.font = 'bold 36px Courier New'; ctx.textAlign = 'center';
     ctx.fillText('DEFEATED...', CW / 2, CH / 2);
     ctx.font = '12px Courier New'; ctx.fillStyle = '#ccc';
-    ctx.fillText('点击右下角从存档点重来', CW / 2, CH / 2 + 30);
+    ctx.fillText('点击屏幕任意位置从存档点重来', CW / 2, CH / 2 + 30);
   }
 }
 
@@ -2104,16 +2105,22 @@ function updateMenu(dt) {
   const dirY = Input.getDirY();
   if (dirY < -0.3 && !Input.prevBattleNavUp) {
     Game.menuTab = (Game.menuTab - 1 + 3) % 3;
+    SFX.play('select');
   }
   if (dirY > 0.3 && !Input.prevBattleNavDown) {
     Game.menuTab = (Game.menuTab + 1) % 3;
+    SFX.play('select');
   }
   Input.prevBattleNavUp = (dirY < -0.3);
   Input.prevBattleNavDown = (dirY > 0.3);
+  // 道具页确认=使用药水
   if (Input.pressedConfirm() && Game.menuTab === 2) {
     useItem('health_potion');
+    SFX.play('confirm');
   }
+  // 上滑退出 或 确认退出提示
   if (Input.joystick.active && Input.joystick.dy < -50) {
+    SFX.play('confirm');
     Game.scene = Game.interior ? 'interior' : 'map';
   }
 }
@@ -2249,6 +2256,30 @@ function renderTouchControls() {
       ctx.strokeStyle = 'rgba(255,215,0,0.8)'; ctx.lineWidth = 2; ctx.stroke();
       ctx.fillStyle = '#ffd700'; ctx.font = 'bold 16px Courier New'; ctx.textAlign = 'center';
       ctx.fillText('确认', btnX, btnY + 5); ctx.restore();
+    }
+    // 菜单/商店场景：显示摇杆+退出提示
+    if (Game.scene === 'menu' || Game.scene === 'shop') {
+      // 摇杆（可见）
+      if (Input.joystick.active) {
+        const jx = Input.joystick.startX, jy = Input.joystick.startY;
+        ctx.save();
+        ctx.strokeStyle = 'rgba(255,215,0,0.3)'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(jx, jy, 40, 0, Math.PI * 2); ctx.stroke();
+        const thumbX = jx + Math.max(-30, Math.min(30, Input.joystick.dx));
+        const thumbY = jy + Math.max(-30, Math.min(30, Input.joystick.dy));
+        ctx.fillStyle = 'rgba(255,215,0,0.5)';
+        ctx.beginPath(); ctx.arc(thumbX, thumbY, 20, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+      }
+      // 退出提示（左上角）
+      ctx.save();
+      ctx.fillStyle = 'rgba(255,255,255,0.15)';
+      ctx.fillRect(10, 10, 100, 24);
+      ctx.strokeStyle = 'rgba(255,255,255,0.3)'; ctx.lineWidth = 1;
+      ctx.strokeRect(10, 10, 100, 24);
+      ctx.fillStyle = '#aaa'; ctx.font = '10px Courier New'; ctx.textAlign = 'center';
+      ctx.fillText('↑上滑返回', 60, 26);
+      ctx.restore();
     }
   } else {
     // 浮动摇杆
