@@ -82,6 +82,7 @@ SFX.init();
 const Input = {
   joystick: { active: false, startX: 0, startY: 0, dx: 0, dy: 0, touchId: null },
   confirmPressed: false, prevConfirmPressed: false, pendingConfirm: false,
+  pendingExit: false,
   menuButton: false, prevMenuButton: false, pendingMenu: false,
   lastTouchX: 0, lastTouchY: 0, touchLog: 'none',
   prevBattleNavUp: false, prevBattleNavDown: false,
@@ -142,8 +143,13 @@ const Input = {
             (Game.scene === 'battle' && Game.battle && (Game.battle.turn === 'win' || Game.battle.turn === 'lose'))) {
           // text_ai的typing状态不触发确认
           if (!(Game.dialogue && Game.dialogue.mode === 'text_ai' && Game.dialogue.aiState === 'typing')) {
-            this.confirmPressed = true;
-            this.pendingConfirm = true;
+            // 左上角退出按钮（text_ai模式）
+            if (Game.scene === 'dialogue' && Game.dialogue && Game.dialogue.mode === 'text_ai' && tx < 60 && ty < 40) {
+              this.pendingExit = true;
+            } else {
+              this.confirmPressed = true;
+              this.pendingConfirm = true;
+            }
           }
           continue;
         }
@@ -884,29 +890,39 @@ function updateMap(dt) {
 
 function triggerNPC(npc) {
   Voice.lastNpc = npc;
-  // 有ASR插件时进语音AI模式，否则进文字AI模式
-  if (Voice.enabled && Voice.asr) {
+
+  // 绿萝：第一次见面 → 剧情对话（加入队伍）；之后 → AI对话
+  if (npc.id === 'greenluo') {
+    if (!Game.flags.greenluoJoined) {
+      // 第一次：剧情对话（5句台词，结束后绿萝加入）
+      Game.dialogue = { ...DIALOGUES.greenluo_intro, lineIndex: 0, charIndex: 0, done: false };
+      Game.scene = 'dialogue';
+      return;
+    }
+    // 之后：AI对话模式
     Game.scene = 'dialogue';
     Game.dialogue = {
-      speaker: npc.label || npc.id,
-      portrait: npc.id === 'greenluo' ? 'greenluo' : 'laochen',
-      lines: ['（按住语音按钮说话，或点确认退出）'],
-      lineIndex: 0, charIndex: 999, done: true,
-      mode: 'ai',
-      aiState: 'idle',
+      speaker: '绿萝', portrait: 'greenluo',
+      lines: ['老陈，又来了。想聊什么？'],
+      lineIndex: 0, charIndex: 0, done: false,
+      mode: 'text_ai', aiState: 'idle', aiReply: '',
     };
     return;
   }
-  // 文字AI对话模式（不需要语音插件，打字和NPC对话）
-  Game.scene = 'dialogue';
-  Game.dialogue = {
-    speaker: npc.label || npc.id,
-    portrait: npc.id === 'greenluo' ? 'greenluo' : 'laochen',
-    lines: ['（点屏幕打字和' + (npc.label || npc.id) + '对话）'],
-    lineIndex: 0, charIndex: 999, done: true,
-    mode: 'text_ai', aiState: 'idle',
-    aiReply: '',
-  };
+
+  // 商人：剧情对话
+  if (npc.id === 'merchant') {
+    Game.dialogue = { ...DIALOGUES.merchant, lineIndex: 0, charIndex: 0, done: false };
+    Game.scene = 'dialogue';
+    return;
+  }
+
+  // 师父：剧情对话
+  if (npc.id === 'master') {
+    Game.dialogue = { ...DIALOGUES.master, lineIndex: 0, charIndex: 0, done: false };
+    Game.scene = 'dialogue';
+    return;
+  }
 }
 
 function renderMap() {
@@ -1530,13 +1546,25 @@ function updateDialogue(dt) {
 
   // 文字AI对话模式（不需要语音插件）
   if (d.mode === 'text_ai') {
+    // 开场白逐字显示
+    if (!d.done && d.aiState === 'idle' && !d.aiReply) {
+      d.charIndex += 0.5;
+      if (d.charIndex >= d.lines[0].length) { d.charIndex = d.lines[0].length; d.done = true; }
+    }
     // 上滑退出
     if (Input.joystick.active && Input.joystick.dy < -50) {
       Game.dialogue = null;
       Game.scene = Game.interior ? 'interior' : 'map';
       return;
     }
-    // 点确认 → 打开键盘输入
+    // 左上角退出按钮
+    if (Input.pendingExit) {
+      Input.pendingExit = false;
+      Game.dialogue = null;
+      Game.scene = Game.interior ? 'interior' : 'map';
+      return;
+    }
+    // 点确认 → 打开键盘输入（仅在idle且有回复或首次时）
     if (Input.pressedConfirm() && d.aiState === 'idle') {
       d.aiState = 'typing';
       try {
@@ -1712,20 +1740,32 @@ function renderDialogue() {
 
   // 文字AI对话模式
   if (d.mode === 'text_ai') {
+    // 退出按钮（左上角）
+    ctx.save();
+    ctx.fillStyle = 'rgba(231,76,60,0.3)';
+    ctx.fillRect(5, 5, 50, 30);
+    ctx.strokeStyle = '#e74c3c'; ctx.lineWidth = 1;
+    ctx.strokeRect(5, 5, 50, 30);
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 12px Courier New'; ctx.textAlign = 'center';
+    ctx.fillText('退出', 30, 24);
+    ctx.restore();
+
     if (d.aiState === 'idle') {
       if (d.aiReply) {
         // 显示AI回复
       ctx.fillStyle = '#e0e0e0'; ctx.font = '13px Courier New'; ctx.textAlign = 'left';
       wrapText(ctx, d.aiReply, 130, boxY + 55, CW - 145, 20);
       } else {
-      ctx.fillStyle = '#888'; ctx.font = '12px Courier New';
-      wrapText(ctx, '点确认打字对话，或上滑退出', 130, boxY + 55, CW - 145, 20);
+      // 显示开场白（逐字显示）
+      const text = d.lines[0] ? d.lines[0].substring(0, Math.floor(d.charIndex)) : '';
+      ctx.fillStyle = '#e0e0e0'; ctx.font = '13px Courier New'; ctx.textAlign = 'left';
+      wrapText(ctx, text, 130, boxY + 55, CW - 145, 20);
       }
       // 提示
       const blink = Math.floor(Date.now() / 400) % 2;
       if (blink) {
         ctx.fillStyle = '#ffd700'; ctx.font = '12px Courier New'; ctx.textAlign = 'right';
-        ctx.fillText('▼ 点确认说话', CW - 20, CH - 20);
+        ctx.fillText('▼ 点屏幕说话', CW - 20, CH - 20);
       }
     } else if (d.aiState === 'typing') {
       ctx.fillStyle = '#888'; ctx.font = '12px Courier New'; ctx.textAlign = 'center';
@@ -1735,8 +1775,6 @@ function renderDialogue() {
       const dots = '.'.repeat(Math.floor(Date.now() / 400) % 4);
       ctx.fillText(d.speaker + '思考中' + dots, CW / 2, boxY + 80); ctx.restore();
     }
-    ctx.fillStyle = '#888'; ctx.font = '10px Courier New'; ctx.textAlign = 'left';
-    ctx.fillText('↑上滑退出', 10, CH - 12);
     return;
   }
 
