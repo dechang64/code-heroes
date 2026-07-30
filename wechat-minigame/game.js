@@ -215,9 +215,21 @@ const Voice = {
   lastNpc: null,
 
   init() {
-    // 语音插件需要正式AppID，测试号不可用
-    this.enabled = false;
-    console.log('Voice: 语音插件未启用（需要正式AppID）');
+    // 尝试初始化语音（需要正式AppID + 插件配置）
+    // 如果插件不可用，enabled保持false，游戏用预设对话
+    try {
+      if (typeof wx !== 'undefined' && wx.getRecorderManager) {
+        this.si = wx.getRecorderManager();
+        this.enabled = true;
+        console.log('Voice: 录音管理器初始化成功');
+      } else {
+        this.enabled = false;
+        console.log('Voice: 录音管理器不可用，使用预设对话');
+      }
+    } catch(e) {
+      this.enabled = false;
+      console.log('Voice: 初始化失败', e.message);
+    }
   },
 
   startRecord() {
@@ -869,13 +881,13 @@ function updateMap(dt) {
 
 function triggerNPC(npc) {
   Voice.lastNpc = npc;
-  // 如果语音可用，进入AI对话模式
-  if (Voice.enabled) {
+  // 如果语音可用且云函数已部署，进入AI对话模式
+  if (Voice.enabled && Voice.asr) {
     Game.scene = 'dialogue';
     Game.dialogue = {
       speaker: npc.label || npc.id,
       portrait: npc.id === 'greenluo' ? 'greenluo' : 'laochen',
-      lines: ['（按住语音按钮说话）'],
+      lines: ['（按住语音按钮说话，或点确认退出）'],
       lineIndex: 0, charIndex: 999, done: true,
       mode: 'ai',
       aiState: 'idle',
@@ -1508,6 +1520,13 @@ function updateDialogue(dt) {
       Game.scene = Game.interior ? 'interior' : 'map';
       return;
     }
+    // 点确认退出（兜底，防止没语音插件时卡死）
+    if (Input.pressedConfirm() && Voice.state === 'idle') {
+      Voice.reset();
+      Game.dialogue = null;
+      Game.scene = Game.interior ? 'interior' : 'map';
+      return;
+    }
     // 语音按钮处理在renderTouchControls的触摸事件中
     return;
   }
@@ -1569,7 +1588,7 @@ function renderDialogue() {
   if (d.mode === 'ai') {
     if (Voice.state === 'idle') {
       ctx.fillStyle = '#888'; ctx.font = '12px Courier New';
-      wrapText(ctx, '按住语音按钮说话，或上滑退出', 130, boxY + 55, CW - 145, 20);
+      wrapText(ctx, '按住语音按钮说话，或点确认退出', 130, boxY + 55, CW - 145, 20);
     } else if (Voice.state === 'recording') {
       ctx.save(); ctx.fillStyle = 'rgba(255,80,80,0.3)'; ctx.fillRect(0, boxY, CW, 160);
       ctx.fillStyle = '#ff4444'; ctx.font = 'bold 16px Courier New'; ctx.textAlign = 'center';
@@ -1601,7 +1620,7 @@ function renderDialogue() {
       }
     }
     ctx.fillStyle = '#888'; ctx.font = '10px Courier New'; ctx.textAlign = 'left';
-    ctx.fillText('↑上滑离开', 10, CH - 12);
+    ctx.fillText('点确认退出', 10, CH - 12);
     return;
   }
 
