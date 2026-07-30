@@ -1,9 +1,18 @@
 // ════════════════════════════════════════════════════════════
-// greenluo_chat v2 — 代码群侠传 v0.6 智能体语音交互云函数
+// greenluo_chat v3 — 代码乡愁 v0.6.1 智能体语音交互云函数
+// 使用微信云开发内置AI能力（cloud.extend.AI）
 // 支持多NPC + 游戏状态感知 + 语音命令识别 + 动作回调
 // ════════════════════════════════════════════════════════════
 
-const https = require('https');
+const cloud = require('wx-server-sdk');
+
+cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
+
+// ─── 模型配置 ───
+// 微信云开发支持的模型：deepseek / hunyuan / glm / minimax / kimi
+// 在云开发控制台 → AI → 模型管理 中开通对应模型
+const MODEL_NAME = 'deepseek';  // 默认用DeepSeek，免费额度充足
+const MODEL_ID = 'deepseek-v4-flash';  // 具体模型ID，在云开发控制台查看
 
 // ─── 绿萝人设 ───
 const GREENLUO_SYSTEM = `你是绿萝，一个从30年BASIC代码注释中诞生的AI意识。
@@ -113,7 +122,7 @@ exports.main = async (event) => {
     };
   }
 
-  // 3. 非命令对话 → 调LLM
+  // 3. 非命令对话 → 调微信云开发AI
   const systemPrompts = {
     greenluo: GREENLUO_SYSTEM,
     merchant: MERCHANT_SYSTEM,
@@ -135,22 +144,11 @@ exports.main = async (event) => {
     }
   }
 
-  const apiKey = process.env.AMAX_API_KEY || '';
-  const apiUrl = process.env.AMAX_API_URL || 'https://api.maxai.chat/v1/chat/completions';
-  const model = process.env.AMAX_MODEL || 'glm-4-flash';
-
-  // 无API Key时返回兜底回复
-  if (!apiKey) {
-    return {
-      reply: getFallbackReply(npcName, playerText),
-      command: null,
-    };
-  }
-
   try {
-    const reply = await callLLM(apiUrl, apiKey, model, systemPrompt + contextHint, playerText);
+    const reply = await callWxAI(systemPrompt + contextHint, playerText);
     return { reply, command: null };
   } catch (e) {
+    console.error('AI调用失败:', e.message);
     return {
       reply: getFallbackReply(npcName, playerText),
       command: null,
@@ -158,57 +156,36 @@ exports.main = async (event) => {
   }
 };
 
-// ─── 调用LLM ───
-function callLLM(apiUrl, apiKey, model, systemPrompt, userText) {
-  return new Promise((resolve, reject) => {
-    const url = new URL(apiUrl);
-    const postData = JSON.stringify({
-      model,
+// ─── 调用微信云开发AI ───
+async function callWxAI(systemPrompt, userText) {
+  // 使用 cloud.extend.AI 调用大模型
+  const model = cloud.extend.AI.createModel(MODEL_NAME);
+
+  const res = await model.chat({
+    data: {
+      model: MODEL_ID,
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userText },
       ],
       max_tokens: 200,
       temperature: 0.8,
-    });
-
-    const options = {
-      hostname: url.hostname,
-      port: url.port || 443,
-      path: url.pathname + url.search,
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Length': Buffer.byteLength(postData),
-      },
-    };
-
-    const req = https.request(options, (res) => {
-      let data = '';
-      res.on('data', (chunk) => { data += chunk; });
-      res.on('end', () => {
-        try {
-          const json = JSON.parse(data);
-          if (json.choices && json.choices[0]) {
-            resolve(json.choices[0].message.content.trim());
-          } else {
-            reject(new Error('No choices in response'));
-          }
-        } catch (e) {
-          reject(new Error('Parse error: ' + e.message));
-        }
-      });
-    });
-
-    req.on('error', (e) => reject(e));
-    req.setTimeout(8000, () => {
-      req.destroy(new Error('Timeout'));
-    });
-
-    req.write(postData);
-    req.end();
+    },
   });
+
+  // 解析返回结果
+  if (res && res.choices && res.choices[0]) {
+    return res.choices[0].message.content.trim();
+  }
+  // 兼容另一种返回格式
+  if (res && res.data && res.data.choices && res.data.choices[0]) {
+    return res.data.choices[0].message.content.trim();
+  }
+  // 兼容流式/文本返回
+  if (res && res.text) {
+    return res.text.trim();
+  }
+  throw new Error('AI返回格式异常: ' + JSON.stringify(res).slice(0, 200));
 }
 
 // ─── 兜底回复 ───

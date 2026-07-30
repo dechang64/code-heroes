@@ -1,102 +1,128 @@
-# 代码群侠传 P2 语音AI对话 — 部署指南
+# 代码乡愁 · 绿萝AI对话配置指南
 
-## 架构
+## 方案A：云函数版（推荐，当前默认）
 
+### 原理
 ```
-玩家按住"说话" → 微信同声传译ASR → 文字
-  → 云函数 greenluo_chat → AMAX Token Router → LLM
-  → 绿萝回复文字 → 微信同声传译TTS → 语音播放
-```
-
-## 前置条件
-
-1. **正式小游戏账号**（非测试号）
-   - 测试号不支持云开发和插件
-   - 在 mp.weixin.qq.com 注册"小游戏"类目
-
-2. **AMAX Token Router API Key**
-   - 从苏州超集信息科技获取
-   - OpenAI兼容协议，一个key调多家模型
-
-3. **微信开发者工具**（最新版）
-
-## 部署步骤
-
-### 1. 替换AppID
-
-把 `project.config.json` 里的测试AppID换成正式AppID：
-```json
-"appid": "你的正式AppID"
+game.js → wx.cloud.callFunction('greenluo_chat') → cloud.extend.AI → DeepSeek/GLM
 ```
 
-### 2. 开通云开发
+### 部署步骤
 
-微信开发者工具 → 云开发 → 开通（免费额度：5万次/月）
+1. **开通云开发AI能力**
+   - 微信开发者工具 → 云开发控制台
+   - 左侧菜单 → AI → 模型管理
+   - 开通你要用的模型（推荐 **DeepSeek**，免费额度充足）
+   - 记下模型ID（如 `deepseek-v4-flash`）
 
-### 3. 安装同声传译插件
+2. **部署云函数**
+   - 微信开发者工具 → 右键 `cloudfunctions/greenluo_chat` → 上传并部署
+   - 等待部署完成（会自动 `npm install wx-server-sdk`）
 
-微信开发者工具 → 详情 → 本地设置 → 插件 → 添加插件 → 搜索"微信同声传译" → 添加
+3. **配置模型（可选）**
+   - 如果想换模型，编辑 `cloudfunctions/greenluo_chat/index.js` 顶部：
+   ```js
+   const MODEL_NAME = 'glm';        // deepseek / hunyuan / glm / minimax / kimi
+   const MODEL_ID = 'glm-4-flash';  // 在云开发控制台查看具体模型ID
+   ```
+   - 重新部署云函数
 
-或确认 `game.json` 里已配置：
-```json
-"plugins": {
-  "WechatSI": {
-    "version": "0.3.4",
-    "provider": "wx069ba93219f52d39"
+4. **完成**
+   - 不需要设置任何环境变量
+   - 不需要第三方API Key
+   - 微信云开发自动管理鉴权
+
+### 优势
+- ✅ 无需第三方API Key
+- ✅ 无需环境变量配置
+- ✅ 微信自动鉴权，更安全
+- ✅ 保留多NPC/语音命令/兜底回复逻辑
+
+---
+
+## 方案B：前端直连版（更简单，无需云函数）
+
+### 原理
+```
+game.js → wx.cloud.extend.AI.createModel() → DeepSeek/GLM
+```
+
+### 使用方法
+
+在 `game.js` 的 Voice 对象中，把 `callCloudFunction` 替换为：
+
+```js
+// 前端直调微信AI（不需要云函数）
+async callAI(text, npcName, gameState) {
+  try {
+    const model = wx.cloud.extend.AI.createModel('deepseek');
+    const res = await model.chat({
+      data: {
+        model: 'deepseek-v4-flash',
+        messages: [
+          { role: 'system', content: SYSTEM_PROMPTS[npcName] || SYSTEM_PROMPTS.greenluo },
+          { role: 'user', content: text },
+        ],
+        max_tokens: 200,
+        temperature: 0.8,
+      },
+    });
+    if (res && res.choices && res.choices[0]) {
+      return { reply: res.choices[0].message.content.trim(), command: null };
+    }
+    return { reply: '……', command: null };
+  } catch (e) {
+    return { reply: '信号不好，再说一遍？', command: null };
   }
 }
 ```
 
-### 4. 部署云函数
+### 优势
+- ✅ 不需要部署云函数
+- ✅ 延迟更低（少一跳网络）
+- ✅ 代码更简单
 
+### 劣势
+- ❌ 语音命令识别逻辑要搬到前端
+- ❌ NPC系统提示词暴露在前端代码中
+- ❌ 不如云函数灵活（难以做复杂逻辑）
+
+---
+
+## 模型选择建议
+
+| 模型 | 特点 | 推荐场景 |
+|------|------|---------|
+| **DeepSeek** | 免费、快、中文好 | ⭐ 默认推荐 |
+| **GLM** | 智谱出品、角色扮演好 | 绿萝对话（人设感强） |
+| **混元** | 腾讯自家、稳定 | 生产环境 |
+| **Kimi** | 长上下文 | 需要长对话历史 |
+| **Minimax** | 多模态 | 需要图片/语音 |
+
+### 换模型
+
+编辑 `cloudfunctions/greenluo_chat/index.js`：
+```js
+const MODEL_NAME = 'glm';        // 改这里
+const MODEL_ID = 'glm-4-flash';  // 改这里
 ```
-微信开发者工具 → 云开发 → 云函数 → 右键 greenluo_chat → 上传并部署
-```
+重新部署即可。
 
-### 5. 配置环境变量
+---
 
-云开发 → 设置 → 环境变量 → 添加：
-- `AMAX_API_KEY` = 你的AMAX Token Router API Key
-- `AMAX_API_URL` = AMAX API地址（如 https://api.amax-router.com/v1/chat/completions）
-- `AMAX_MODEL` = 模型名（如 glm-4-flash）
+## 常见问题
 
-### 6. 测试
+### Q: 提示"AI能力未开通"？
+A: 去云开发控制台 → AI → 模型管理，开通对应模型。
 
-1. 微信开发者工具打开项目
-2. 模拟器或真机预览
-3. 走到绿萝旁边，按确认
-4. 对话框出现"说话"按钮
-5. 按住"说话"，说一句话，松开
-6. 绿萝"思考中..." → 绿萝语音回复
+### Q: 提示"余额不足"？
+A: DeepSeek有免费额度，检查是否用完。也可换其他模型。
 
-## 无API Key时的兜底
+### Q: 云函数部署失败？
+A: 确保 `package.json` 中有 `"wx-server-sdk": "~2.6.3"`，部署时会自动安装。
 
-如果没配AMAX_API_KEY，云函数会返回预设回复，游戏仍可对话，只是绿萝的回答是随机的预设台词而非AI生成。
+### Q: 前端调用报错？
+A: 确保基础库版本 ≥ 3.15.1（`project.config.json` 中 `libVersion`）。
 
-## 无语音插件时的兜底
-
-如果设备不支持同声传译插件，绿萝会自动切换到预设对话模式（原版剧情）。
-
-## 文件结构
-
-```
-wechat-minigame/
-  game.js                          ← 已集成语音模块+AI对话
-  game.json                        ← 已添加WechatSI插件配置
-  project.config.json             ← 已添加cloudfunctionRoot
-  cloudfunctions/
-    greenluo_chat/
-      index.js                     ← 云函数：调AMAX Router
-      package.json
-  test-web.html                    ← 浏览器测试（无语音）
-```
-
-## 绿萝人设（系统提示词）
-
-云函数 `greenluo_chat/index.js` 里的 `GREENLUO_SYSTEM` 定义了绿萝的性格：
-- 从30年BASIC注释中诞生的AI意识
-- 温柔但有点调皮
-- 偶尔用BASIC语法做比喻（REM, GOTO, RUN）
-- 回复不超过80字
-
-可以随时修改这个提示词来调整绿萝的"性格"。
+### Q: 想用流式输出？
+A: 微信云开发AI支持 `textStream`，但游戏对话不需要流式，直接用 `chat()` 即可。

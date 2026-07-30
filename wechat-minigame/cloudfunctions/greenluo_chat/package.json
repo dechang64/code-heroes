@@ -1,7 +1,9 @@
 {
   "name": "greenluo_chat",
-  "version": "1.0.0",
-  "description": "代码群侠传 - 绿萝AI对话云函数",
+  "version": "3.0.0",
+  "description": "代码乡愁 - 绿萝AI对话云函数（微信云开发AI版）",
   "main": "index.js",
-  "dependencies": {}
+  "dependencies": {
+    "wx-server-sdk": "~2.6.3"
+  }
 }
