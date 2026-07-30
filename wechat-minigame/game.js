@@ -137,6 +137,12 @@ const Input = {
           this.pendingConfirm = true;
           continue;
         }
+        // 对话/菜单/商店场景：任意位置点击=确认
+        if (Game.scene === 'dialogue' || Game.scene === 'menu' || Game.scene === 'shop') {
+          this.confirmPressed = true;
+          this.pendingConfirm = true;
+          continue;
+        }
         // 浮动摇杆：触摸点不在按钮上时，从触摸点开始
         if (!this.joystick.active && Game.scene !== 'dialogue') {
           this.joystick.active = true;
@@ -2233,6 +2239,16 @@ function renderTouchControls() {
       ctx.font = 'bold 14px Courier New'; ctx.textAlign = 'center';
       ctx.fillText(isRecording ? '●录音' : '🎤说话', vbX, vbY + 5);
       ctx.restore();
+    }
+    // 确认按钮（对话/菜单/商店也显示）
+    {
+      const btnX = LW - 80, btnY = LH - 80;
+      ctx.save();
+      ctx.fillStyle = Input.confirmPressed ? 'rgba(255,215,0,0.5)' : 'rgba(255,215,0,0.2)';
+      ctx.beginPath(); ctx.arc(btnX, btnY, 38, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = 'rgba(255,215,0,0.8)'; ctx.lineWidth = 2; ctx.stroke();
+      ctx.fillStyle = '#ffd700'; ctx.font = 'bold 16px Courier New'; ctx.textAlign = 'center';
+      ctx.fillText('确认', btnX, btnY + 5); ctx.restore();
     }
   } else {
     // 浮动摇杆
