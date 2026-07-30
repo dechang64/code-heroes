@@ -39,6 +39,44 @@ function loadImages() {
 }
 
 // ════════════════════════════════════════════════════════════
+// 音效系统
+// ════════════════════════════════════════════════════════════
+const SFX = {
+  pool: [],
+  enabled: true,
+  stepTimer: 0,
+  init() {
+    // 预创建几个音频上下文做池
+    for (let i = 0; i < 6; i++) {
+      try {
+        const ctx = wx.createInnerAudioContext();
+        this.pool.push(ctx);
+      } catch(e) { break; }
+    }
+    this.idx = 0;
+  },
+  play(name) {
+    if (!this.enabled || this.pool.length === 0) return;
+    try {
+      const ctx = this.pool[this.idx % this.pool.length];
+      this.idx++;
+      ctx.stop();
+      ctx.src = `assets/sfx/${name}.wav`;
+      ctx.volume = 0.5;
+      ctx.play();
+    } catch(e) {}
+  },
+  step() {
+    // 脚步声节流：每250ms一次
+    const now = Date.now();
+    if (now - this.stepTimer < 250) return;
+    this.stepTimer = now;
+    this.play('step');
+  },
+};
+SFX.init();
+
+// ════════════════════════════════════════════════════════════
 // 触摸输入 — 浮动摇杆版
 // ════════════════════════════════════════════════════════════
 const Input = {
@@ -644,6 +682,7 @@ function gainXP(amount) {
     Game.player.atk += 2; Game.player.def += 1;
     Game.toast = `升级！Lv.${Game.player.level}`;
     Game.toastTimer = 2000;
+    SFX.play('levelup');
     // 检查技能解锁
     for (const [id, skill] of Object.entries(SKILL_TREE)) {
       if (!Game.player.skills.includes(id) && skill.level <= Game.player.level &&
@@ -690,7 +729,8 @@ function isOnRoad(x, y) {
 
 function hitsBuilding(x, y) {
   for (const b of BUILDINGS) {
-    if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) return b;
+    // 碰撞框 = 建筑主体 + 屋顶（向上延伸25px）
+    if (x >= b.x - 5 && x <= b.x + b.w + 5 && y >= b.y - 25 && y <= b.y + b.h) return b;
   }
   return null;
 }
@@ -738,14 +778,19 @@ function updateMap(dt) {
   if (dx !== 0 && dy !== 0) { dx *= 0.707; dy *= 0.707; }
   p.moving = (dx !== 0 || dy !== 0);
 
+  // 脚步声
+  if (p.moving) SFX.step();
+
   // 道路速度加成
   const speedMult = isOnRoad(p.x, p.y) ? 1.0 : 0.55;
   dx *= speedMult; dy *= speedMult;
 
-  // 建筑碰撞检测
+  // 建筑碰撞检测（带玩家半径）
+  const PR = 10; // 玩家碰撞半径
   const newX = p.x + dx, newY = p.y + dy;
-  if (!hitsBuilding(newX, p.y)) p.x = newX;
-  if (!hitsBuilding(p.x, newY)) p.y = newY;
+  // 检查新位置周围4个点是否撞建筑
+  if (!hitsBuilding(newX + PR, p.y) && !hitsBuilding(newX - PR, p.y)) p.x = newX;
+  if (!hitsBuilding(p.x, newY + PR) && !hitsBuilding(p.x, newY - PR)) p.y = newY;
   p.x = Math.max(30, Math.min(MAP_W - 30, p.x));
   p.y = Math.max(30, Math.min(MAP_H - 30, p.y));
 
@@ -775,6 +820,7 @@ function updateMap(dt) {
   // 建筑入口检测
   Game.nearbyDoor = isNearDoor(p.x, p.y);
   if (Game.nearbyDoor && Input.pressedConfirm()) {
+    SFX.play('door');
     Game.interior = Game.nearbyDoor.interior;
     Game.scene = 'interior';
     // 设置player到室内入口位置（底部中间）
@@ -1286,18 +1332,22 @@ function updateShop(dt) {
   const dirY = Input.getDirY();
   if (dirY < -0.3 && !Input.prevBattleNavUp) {
     s.selected = (s.selected - 1 + SHOP_GOODS.length) % SHOP_GOODS.length;
+    SFX.play('select');
   }
   if (dirY > 0.3 && !Input.prevBattleNavDown) {
     s.selected = (s.selected + 1) % SHOP_GOODS.length;
+    SFX.play('select');
   }
   const dirX = Input.getDirX();
   if (dirX < -0.3 && !Input.prevBattleNavLeft) {
     s.mode = s.mode === 'buy' ? 'sell' : 'buy';
     s.selected = 0;
+    SFX.play('select');
   }
   if (dirX > 0.3 && !Input.prevBattleNavRight) {
     s.mode = s.mode === 'buy' ? 'sell' : 'buy';
     s.selected = 0;
+    SFX.play('select');
   }
   Input.prevBattleNavUp = (dirY < -0.3);
   Input.prevBattleNavDown = (dirY > 0.3);
@@ -1305,11 +1355,13 @@ function updateShop(dt) {
   Input.prevBattleNavRight = (dirX > 0.3);
 
   if (Input.pressedConfirm()) {
+    SFX.play('confirm');
     if (s.mode === 'buy') {
       const itemId = SHOP_GOODS[s.selected];
       const item = ITEMS[itemId] || EQUIPMENT[itemId];
       if (item && Game.player.gold >= item.price) {
         Game.player.gold -= item.price;
+        SFX.play('buy');
         if (ITEMS[itemId]) {
           // 道具
           const inv = Game.player.inventory.find(i => i.id === itemId);
@@ -1651,21 +1703,25 @@ function updateBattle(dt) {
     const skills = Game.player.skills.map(id => ({ id, ...SKILL_TREE[id] })).filter(s => s.type);
     const dirY = Input.getDirY();
     if (dirY < -0.3 && !Input.prevBattleNavUp) {
+      SFX.play('select');
       if (b.battleMenuPage === 0) b.selectedAction = (b.selectedAction - 1 + skills.length) % skills.length;
       else if (b.battleMenuPage === 1 && b.greenluo) b.selectedAction = (b.selectedAction - 1 + b.greenluo.skills.length) % b.greenluo.skills.length;
       else if (b.battleMenuPage === 2) b.selectedAction = (b.selectedAction - 1 + Game.player.inventory.length) % Math.max(1, Game.player.inventory.length);
     }
     if (dirY > 0.3 && !Input.prevBattleNavDown) {
+      SFX.play('select');
       if (b.battleMenuPage === 0) b.selectedAction = (b.selectedAction + 1) % skills.length;
       else if (b.battleMenuPage === 1 && b.greenluo) b.selectedAction = (b.selectedAction + 1) % b.greenluo.skills.length;
       else if (b.battleMenuPage === 2) b.selectedAction = (b.selectedAction + 1) % Math.max(1, Game.player.inventory.length);
     }
     const dirX = Input.getDirX();
     if (dirX < -0.3 && !Input.prevBattleNavLeft) {
+      SFX.play('select');
       b.battleMenuPage = (b.battleMenuPage - 1 + 3) % 3;
       b.selectedAction = 0;
     }
     if (dirX > 0.3 && !Input.prevBattleNavRight) {
+      SFX.play('select');
       b.battleMenuPage = (b.battleMenuPage + 1) % 3;
       b.selectedAction = 0;
     }
@@ -1673,10 +1729,11 @@ function updateBattle(dt) {
     Input.prevBattleNavUp = (dirY < -0.3); Input.prevBattleNavDown = (dirY > 0.3);
 
     if (Input.pressedConfirm()) {
+      SFX.play('confirm');
       if (b.battleMenuPage === 0) {
         const skill = skills[b.selectedAction];
         if (!skill) return;
-        if (b.member.mp < skill.mp) { b.log.push('MP不足！'); return; }
+        if (b.member.mp < skill.mp) { b.log.push('MP不足！'); SFX.play('error'); return; }
         b.member.mp -= skill.mp;
         executePlayerAction(b, skill);
         b.turnOrder = 'greenluo';
@@ -1727,6 +1784,7 @@ function updateBattle(dt) {
       const target = b.greenluo && Math.random() < 0.3 ? b.greenluo : b.member;
       const dmg = calculateDamage(b.enemy, target, 1.0);
       target.hp = Math.max(0, target.hp - dmg);
+      SFX.play('hit');
       if (target === b.member) {
         b.playerShake = 300;
         b.damageNumbers.push({ x: 200, y: 320, value: dmg, life: 1000, color: '#ff6644' });
@@ -1752,6 +1810,7 @@ function updateBattle(dt) {
         } else {
           b.log.push('老陈倒下了...');
           b.turn = 'lose';
+          SFX.play('defeat');
         }
       }
       if (b.greenluo && b.greenluo.hp <= 0) {
@@ -1765,6 +1824,7 @@ function updateBattle(dt) {
 
   if (b.enemy.hp <= 0 && b.turn !== 'win') {
     b.turn = 'win';
+    SFX.play('victory');
     const xp = b.enemy.xp || 10, gold = b.enemy.gold || 5;
     gainXP(xp);
     Game.player.gold += gold;
@@ -1778,7 +1838,9 @@ function executePlayerAction(b, skill) {
   if (skill.type === 'defense') {
     applyStatusEffect(b.member, 'buff_def', 2);
     b.log.push('老陈进入防御姿态！');
+    SFX.play('confirm');
   } else if (skill.type === 'attack') {
+    SFX.play('attack');
     if (b.enemy.phase3 && skill.id !== 'breakpoint') {
       b.log.push(`老陈使用${skill.name}，但零号Bug免疫了！需要断点术！`);
       return;
@@ -1808,6 +1870,7 @@ function executePlayerAction(b, skill) {
   } else if (skill.type === 'cleanse') {
     b.member.statusEffects = [];
     b.log.push('老陈释放了内存，所有异常解除！');
+    SFX.play('heal');
   }
 }
 
@@ -1815,20 +1878,24 @@ function executeGreenluoAction(b, skill) {
   if (skill.type === 'analyze') {
     b.log.push('绿萝分析了' + b.enemy.name + '的弱点！');
     b.enemy.def = Math.floor(b.enemy.def * 0.7);
+    SFX.play('confirm');
   } else if (skill.type === 'buff_atk') {
     applyStatusEffect(b.member, 'buff_atk', 3);
     b.log.push('绿萝重构了老陈的攻击逻辑，攻击力提升！');
+    SFX.play('confirm');
   } else if (skill.type === 'heal') {
     const heal = 30;
     b.member.hp = Math.min(b.member.maxHp, b.member.hp + heal);
     b.damageNumbers.push({ x: 200, y: 320, value: heal, life: 1000, color: '#2ecc71' });
     b.log.push('绿萝写了一行REM，老陈恢复了' + heal + 'HP！');
+    SFX.play('heal');
   } else if (skill.type === 'aoe') {
     const dmg = Math.floor(getEffectiveAtk(b.greenluo) * skill.power);
     b.enemy.hp = Math.max(0, b.enemy.hp - dmg);
     b.enemyShake = 300;
     b.damageNumbers.push({ x: 200, y: 140, value: dmg, life: 1000, color: '#2ecc71' });
     b.log.push('绿萝执行了gcc，造成' + dmg + '伤害！');
+    SFX.play('attack');
   }
 }
 
