@@ -140,8 +140,11 @@ const Input = {
         // 对话/菜单/商店场景：任意位置点击=确认
         if (Game.scene === 'dialogue' || Game.scene === 'menu' || Game.scene === 'shop' ||
             (Game.scene === 'battle' && Game.battle && (Game.battle.turn === 'win' || Game.battle.turn === 'lose'))) {
-          this.confirmPressed = true;
-          this.pendingConfirm = true;
+          // text_ai的typing状态不触发确认
+          if (!(Game.dialogue && Game.dialogue.mode === 'text_ai' && Game.dialogue.aiState === 'typing')) {
+            this.confirmPressed = true;
+            this.pendingConfirm = true;
+          }
           continue;
         }
         // 浮动摇杆：触摸点不在按钮上时，从触摸点开始
@@ -881,7 +884,7 @@ function updateMap(dt) {
 
 function triggerNPC(npc) {
   Voice.lastNpc = npc;
-  // 如果语音可用且云函数已部署，进入AI对话模式
+  // 有ASR插件时进语音AI模式，否则进文字AI模式
   if (Voice.enabled && Voice.asr) {
     Game.scene = 'dialogue';
     Game.dialogue = {
@@ -894,21 +897,16 @@ function triggerNPC(npc) {
     };
     return;
   }
-  // 无语音时用预设对话
-  if (npc.id === 'greenluo') {
-    if (Game.flags.greenluoJoined) {
-      Game.dialogue = { ...DIALOGUES.greenluo_repeat, lineIndex: 0, charIndex: 0, done: false };
-    } else {
-      Game.dialogue = { ...DIALOGUES.greenluo_intro, lineIndex: 0, charIndex: 0, done: false };
-    }
-    Game.scene = 'dialogue';
-  } else if (npc.id === 'merchant') {
-    Game.dialogue = { ...DIALOGUES.merchant, lineIndex: 0, charIndex: 0, done: false };
-    Game.scene = 'dialogue';
-  } else if (npc.id === 'master') {
-    Game.dialogue = { ...DIALOGUES.master, lineIndex: 0, charIndex: 0, done: false };
-    Game.scene = 'dialogue';
-  }
+  // 文字AI对话模式（不需要语音插件，打字和NPC对话）
+  Game.scene = 'dialogue';
+  Game.dialogue = {
+    speaker: npc.label || npc.id,
+    portrait: npc.id === 'greenluo' ? 'greenluo' : 'laochen',
+    lines: ['（点屏幕打字和' + (npc.label || npc.id) + '对话）'],
+    lineIndex: 0, charIndex: 999, done: true,
+    mode: 'text_ai', aiState: 'idle',
+    aiReply: '',
+  };
 }
 
 function renderMap() {
@@ -1511,7 +1509,7 @@ function updateDialogue(dt) {
   const d = Game.dialogue;
   if (!d) { Game.scene = Game.interior ? 'interior' : 'map'; return; }
 
-  // AI对话模式
+  // AI对话模式（语音）
   if (d.mode === 'ai') {
     // 上滑退出
     if (Input.joystick.active && Input.joystick.dy < -50) {
@@ -1527,7 +1525,57 @@ function updateDialogue(dt) {
       Game.scene = Game.interior ? 'interior' : 'map';
       return;
     }
-    // 语音按钮处理在renderTouchControls的触摸事件中
+    return;
+  }
+
+  // 文字AI对话模式（不需要语音插件）
+  if (d.mode === 'text_ai') {
+    // 上滑退出
+    if (Input.joystick.active && Input.joystick.dy < -50) {
+      Game.dialogue = null;
+      Game.scene = Game.interior ? 'interior' : 'map';
+      return;
+    }
+    // 点确认 → 打开键盘输入
+    if (Input.pressedConfirm() && d.aiState === 'idle') {
+      d.aiState = 'typing';
+      try {
+        wx.showKeyboard({
+          defaultValue: '',
+          maxLength: 50,
+          multiple: false,
+          confirmHold: false,
+          confirmText: '发送',
+        });
+        wx.onKeyboardInput((res) => {
+          d.inputText = res.value;
+        });
+        wx.onKeyboardConfirm((res) => {
+          d.inputText = res.value;
+          wx.hideKeyboard();
+          wx.offKeyboardInput();
+          wx.offKeyboardConfirm();
+          // 发送给云函数
+          d.aiState = 'thinking';
+          d.aiReply = '';
+          callTextAI(d, res.value || d.inputText || '你好');
+        });
+        wx.onKeyboardComplete((res) => {
+          wx.offKeyboardInput();
+          wx.offKeyboardConfirm();
+          wx.offKeyboardComplete();
+          if (d.aiState === 'typing') {
+            d.aiState = 'idle';
+          }
+        });
+      } catch(e) {
+        // showKeyboard不可用时直接发送默认文本
+        d.aiState = 'thinking';
+        callTextAI(d, '你好');
+      }
+      return;
+    }
+    // thinking状态自动回到idle（云函数返回后设为speaking→idle）
     return;
   }
 
@@ -1549,6 +1597,45 @@ function updateDialogue(dt) {
       } else { d.charIndex = 0; d.done = false; }
     }
   }
+}
+
+// 文字AI对话 — 调云函数
+function callTextAI(d, playerText) {
+  const npcName = Voice.lastNpc ? Voice.lastNpc.id : 'greenluo';
+  const gameState = {
+    level: Game.player.level, hp: Game.player.hp, maxHp: Game.player.maxHp,
+    mp: Game.player.mp, gold: Game.player.gold,
+    zone: getZone(Game.player.x, Game.player.y),
+    interior: Game.interior, greenluoJoined: Game.flags.greenluoJoined,
+  };
+
+  if (typeof wx.cloud === 'undefined' || !wx.cloud.callFunction) {
+    d.aiReply = Voice.getFallback(npcName);
+    d.aiState = 'idle';
+    SFX.play('confirm');
+    return;
+  }
+
+  wx.cloud.callFunction({
+    name: 'greenluo_chat',
+    data: { playerText, npcName, scene: 'dialogue', gameState },
+    success: (res) => {
+      const result = res.result || {};
+      d.aiReply = result.reply || Voice.getFallback(npcName);
+      // 执行语音命令（存档/攻击等）
+      if (result.command && result.command !== 'chat') {
+        Voice.executeCommand(result.command, { keyword: result.keyword });
+      }
+      d.aiState = 'idle';
+      SFX.play('confirm');
+    },
+    fail: (err) => {
+      console.log('Cloud function error:', err);
+      d.aiReply = Voice.getFallback(npcName);
+      d.aiState = 'idle';
+      SFX.play('error');
+    },
+  });
 }
 
 function renderDialogue() {
@@ -1584,7 +1671,7 @@ function renderDialogue() {
   ctx.beginPath(); ctx.moveTo(130, boxY + 32);
   ctx.lineTo(130 + ctx.measureText(d.speaker).width + 10, boxY + 32); ctx.stroke();
 
-  // AI对话模式
+  // AI对话模式（语音）
   if (d.mode === 'ai') {
     if (Voice.state === 'idle') {
       ctx.fillStyle = '#888'; ctx.font = '12px Courier New';
@@ -1611,7 +1698,6 @@ function renderDialogue() {
       ctx.fillStyle = '#e0e0e0'; ctx.font = '13px Courier New'; ctx.textAlign = 'left';
       wrapText(ctx, Voice.aiReply || '...', 130, boxY + 55, CW - 145, 20);
     }
-    // 语音按钮提示
     if (Voice.state === 'idle' && Voice.enabled) {
       const blink = Math.floor(Date.now() / 400) % 2;
       if (blink) {
@@ -1621,6 +1707,36 @@ function renderDialogue() {
     }
     ctx.fillStyle = '#888'; ctx.font = '10px Courier New'; ctx.textAlign = 'left';
     ctx.fillText('点确认退出', 10, CH - 12);
+    return;
+  }
+
+  // 文字AI对话模式
+  if (d.mode === 'text_ai') {
+    if (d.aiState === 'idle') {
+      if (d.aiReply) {
+        // 显示AI回复
+      ctx.fillStyle = '#e0e0e0'; ctx.font = '13px Courier New'; ctx.textAlign = 'left';
+      wrapText(ctx, d.aiReply, 130, boxY + 55, CW - 145, 20);
+      } else {
+      ctx.fillStyle = '#888'; ctx.font = '12px Courier New';
+      wrapText(ctx, '点确认打字对话，或上滑退出', 130, boxY + 55, CW - 145, 20);
+      }
+      // 提示
+      const blink = Math.floor(Date.now() / 400) % 2;
+      if (blink) {
+        ctx.fillStyle = '#ffd700'; ctx.font = '12px Courier New'; ctx.textAlign = 'right';
+        ctx.fillText('▼ 点确认说话', CW - 20, CH - 20);
+      }
+    } else if (d.aiState === 'typing') {
+      ctx.fillStyle = '#888'; ctx.font = '12px Courier New'; ctx.textAlign = 'center';
+      ctx.fillText('（键盘已打开，输入后点发送）', CW / 2, boxY + 80);
+    } else if (d.aiState === 'thinking') {
+      ctx.save(); ctx.fillStyle = '#2ecc71'; ctx.font = 'bold 14px Courier New'; ctx.textAlign = 'center';
+      const dots = '.'.repeat(Math.floor(Date.now() / 400) % 4);
+      ctx.fillText(d.speaker + '思考中' + dots, CW / 2, boxY + 80); ctx.restore();
+    }
+    ctx.fillStyle = '#888'; ctx.font = '10px Courier New'; ctx.textAlign = 'left';
+    ctx.fillText('↑上滑退出', 10, CH - 12);
     return;
   }
 
