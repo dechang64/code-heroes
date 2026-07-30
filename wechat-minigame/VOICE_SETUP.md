@@ -1,128 +1,96 @@
-# 代码乡愁 · 绿萝AI对话配置指南
+# 代码乡愁 · 绿萝AI对话配置指南（AMAX版）
 
-## 方案A：云函数版（推荐，当前默认）
+## 原理
 
-### 原理
 ```
-game.js → wx.cloud.callFunction('greenluo_chat') → cloud.extend.AI → DeepSeek/GLM
+game.js → wx.cloud.callFunction('greenluo_chat') → AMAX API (api.maxai.chat) → GLM-4-Flash
 ```
 
-### 部署步骤
+## 部署步骤
 
-1. **开通云开发AI能力**
-   - 微信开发者工具 → 云开发控制台
-   - 左侧菜单 → AI → 模型管理
-   - 开通你要用的模型（推荐 **DeepSeek**，免费额度充足）
-   - 记下模型ID（如 `deepseek-v4-flash`）
+### 第1步：部署云函数
 
-2. **部署云函数**
-   - 微信开发者工具 → 右键 `cloudfunctions/greenluo_chat` → 上传并部署
-   - 等待部署完成（会自动 `npm install wx-server-sdk`）
+1. 微信开发者工具 → 右键 `cloudfunctions/greenluo_chat` → **上传并部署：云端安装依赖**
+2. 等待部署完成
 
-3. **配置模型（可选）**
-   - 如果想换模型，编辑 `cloudfunctions/greenluo_chat/index.js` 顶部：
-   ```js
-   const MODEL_NAME = 'glm';        // deepseek / hunyuan / glm / minimax / kimi
-   const MODEL_ID = 'glm-4-flash';  // 在云开发控制台查看具体模型ID
-   ```
-   - 重新部署云函数
+### 第2步：设置环境变量
 
-4. **完成**
-   - 不需要设置任何环境变量
-   - 不需要第三方API Key
-   - 微信云开发自动管理鉴权
+1. 微信开发者工具 → 云开发控制台 → 云函数 → `greenluo_chat`
+2. 点击 **配置** 或 **环境变量**
+3. 添加以下环境变量：
 
-### 优势
-- ✅ 无需第三方API Key
-- ✅ 无需环境变量配置
-- ✅ 微信自动鉴权，更安全
-- ✅ 保留多NPC/语音命令/兜底回复逻辑
+| 变量名 | 值 | 必填 | 说明 |
+|--------|-----|------|------|
+| `AMAX_API_KEY` | 你的AMAX API Key | ✅ 必填 | 在 maxai.chat 平台获取 |
+| `AMAX_API_URL` | `https://api.maxai.chat/v1/chat/completions` | 可选 | 不填用默认值 |
+| `AMAX_MODEL` | `glm-4-flash` | 可选 | 不填用默认值 |
+
+4. 保存
+
+### 第3步：获取AMAX API Key
+
+1. 访问 https://www.maxai.chat 注册
+2. 进入 API Keys 页面
+3. 创建新 Key，复制
+4. 粘贴到云函数环境变量 `AMAX_API_KEY` 中
+
+### 第4步：测试
+
+1. 在游戏中走到绿萝旁边
+2. 点击对话
+3. 说话或打字
+4. 如果绿萝正常回复 → 配置成功
+5. 如果回复兜底台词 → 检查环境变量是否设置正确
 
 ---
 
-## 方案B：前端直连版（更简单，无需云函数）
+## 换模型
 
-### 原理
-```
-game.js → wx.cloud.extend.AI.createModel() → DeepSeek/GLM
-```
+在环境变量中修改 `AMAX_MODEL`：
 
-### 使用方法
+| 模型 | 模型ID | 特点 |
+|------|--------|------|
+| **GLM-4-Flash** | `glm-4-flash` | ⭐ 默认，免费额度，中文好 |
+| GLM-4 | `glm-4` | 更强，收费 |
+| DeepSeek-V3 | `deepseek-chat` | 推理强 |
+| GPT-4o-mini | `gpt-4o-mini` | OpenAI |
+| Claude-3-Haiku | `claude-3-haiku-20240307` | Anthropic |
 
-在 `game.js` 的 Voice 对象中，把 `callCloudFunction` 替换为：
-
-```js
-// 前端直调微信AI（不需要云函数）
-async callAI(text, npcName, gameState) {
-  try {
-    const model = wx.cloud.extend.AI.createModel('deepseek');
-    const res = await model.chat({
-      data: {
-        model: 'deepseek-v4-flash',
-        messages: [
-          { role: 'system', content: SYSTEM_PROMPTS[npcName] || SYSTEM_PROMPTS.greenluo },
-          { role: 'user', content: text },
-        ],
-        max_tokens: 200,
-        temperature: 0.8,
-      },
-    });
-    if (res && res.choices && res.choices[0]) {
-      return { reply: res.choices[0].message.content.trim(), command: null };
-    }
-    return { reply: '……', command: null };
-  } catch (e) {
-    return { reply: '信号不好，再说一遍？', command: null };
-  }
-}
-```
-
-### 优势
-- ✅ 不需要部署云函数
-- ✅ 延迟更低（少一跳网络）
-- ✅ 代码更简单
-
-### 劣势
-- ❌ 语音命令识别逻辑要搬到前端
-- ❌ NPC系统提示词暴露在前端代码中
-- ❌ 不如云函数灵活（难以做复杂逻辑）
+具体可用模型列表见 maxai.chat 平台文档。
 
 ---
 
-## 模型选择建议
+## 无API Key时的行为
 
-| 模型 | 特点 | 推荐场景 |
-|------|------|---------|
-| **DeepSeek** | 免费、快、中文好 | ⭐ 默认推荐 |
-| **GLM** | 智谱出品、角色扮演好 | 绿萝对话（人设感强） |
-| **混元** | 腾讯自家、稳定 | 生产环境 |
-| **Kimi** | 长上下文 | 需要长对话历史 |
-| **Minimax** | 多模态 | 需要图片/语音 |
+如果未设置 `AMAX_API_KEY`，云函数不会报错，而是返回预设的兜底台词：
+- 绿萝：「……你读到了我。三十年了，那些注释里，我一直在等。」
+- 商人：「欢迎光临！看看有什么需要的。」
+- 师父：「代码之路，始于Hello World。」
+- Boss：「……你终于找到我了。」
 
-### 换模型
-
-编辑 `cloudfunctions/greenluo_chat/index.js`：
-```js
-const MODEL_NAME = 'glm';        // 改这里
-const MODEL_ID = 'glm-4-flash';  // 改这里
-```
-重新部署即可。
+游戏可以正常运行，只是对话内容固定。设置API Key后，对话变为AI生成。
 
 ---
 
-## 常见问题
+## 语音命令（不需要AI）
 
-### Q: 提示"AI能力未开通"？
-A: 去云开发控制台 → AI → 模型管理，开通对应模型。
+以下语音命令在云函数中本地识别，**不消耗AI额度**：
 
-### Q: 提示"余额不足"？
-A: DeepSeek有免费额度，检查是否用完。也可换其他模型。
+| 命令 | 关键词 |
+|------|--------|
+| 移动 | 向北走/向南走/向东走/向西走/上/下/左/右 |
+| 攻击 | 攻击/打/战斗/出手 |
+| 防御 | 防御/防守/格挡 |
+| 技能 | 用技能/释放/断点术/递归/编译 |
+| 道具 | 用药水/吃药/恢复 |
+| 买 | 买/购买 |
+| 卖 | 卖/出售 |
+| 存档 | 存档/保存/git commit |
+| 休息 | 休息/睡觉/回血 |
+| 搜索 | 搜索/找/翻/秘籍 |
+| 出门 | 出去/离开/出门 |
+| 菜单 | 菜单/背包/装备/技能树 |
+| 绿萝治愈 | 绿萝治愈/绿萝治疗 |
+| 绿萝攻击 | 绿萝攻击/绿萝gcc |
 
-### Q: 云函数部署失败？
-A: 确保 `package.json` 中有 `"wx-server-sdk": "~2.6.3"`，部署时会自动安装。
-
-### Q: 前端调用报错？
-A: 确保基础库版本 ≥ 3.15.1（`project.config.json` 中 `libVersion`）。
-
-### Q: 想用流式输出？
-A: 微信云开发AI支持 `textStream`，但游戏对话不需要流式，直接用 `chat()` 即可。
+只有**非命令**的对话（如"你是谁""这个江湖是什么"）才会调AMAX API。
