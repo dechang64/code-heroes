@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>代码乡愁 · 小游戏上架预览</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #1a1a2e; color: #e0e0e0; font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif; padding: 40px 20px; }
+  .container { max-width: 900px; margin: 0 auto; }
+  h1 { color: #ffd700; font-size: 28px; margin-bottom: 8px; }
+  .subtitle { color: #888; font-size: 14px; margin-bottom: 32px; }
+  .section { background: #16213e; border-radius: 12px; padding: 24px; margin-bottom: 24px; }
+  .section h2 { color: #4ecdc4; font-size: 18px; margin-bottom: 16px; border-bottom: 1px solid #2a2a4a; padding-bottom: 8px; }
+  .cover-wrap { text-align: center; }
+  .cover-wrap img { max-width: 100%; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); }
+  .icon-wrap { display: flex; align-items: center; gap: 24px; }
+  .icon-wrap img { width: 144px; height: 144px; border-radius: 24px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); }
+  .icon-wrap .info { flex: 1; }
+  .info-row { display: flex; gap: 12px; margin-bottom: 8px; }
+  .info-label { color: #888; width: 100px; flex-shrink: 0; }
+  .info-value { color: #e0e0e0; }
+  .desc-box { background: #0f3460; border-radius: 8px; padding: 16px; margin-bottom: 12px; }
+  .desc-box h3 { color: #ffd700; font-size: 14px; margin-bottom: 8px; }
+  .desc-box p { color: #ccc; font-size: 14px; line-height: 1.8; }
+  .tags { display: flex; flex-wrap: wrap; gap: 8px; }
+  .tag { background: #2a2a4a; color: #4ecdc4; padding: 4px 12px; border-radius: 4px; font-size: 12px; }
+  .checklist { list-style: none; }
+  .checklist li { padding: 6px 0; color: #ccc; font-size: 14px; }
+  .checklist li::before { content: '☐ '; color: #888; }
+  .checklist li.done::before { content: '☑ '; color: #4ecdc4; }
+  .checklist li.done { color: #4ecdc4; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>代码乡愁</h1>
+  <p class="subtitle">微信小游戏上架预览 · AppID: wx209ded32a0adb5c2</p>
+
+  <div class="section">
+    <h2>封面图（1344×768）</h2>
+    <div class="cover-wrap">
+      <img src="assets/cover_1344x768.png" alt="代码乡愁封面">
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>游戏图标（1024×1024）</h2>
+    <div class="icon-wrap">
+      <img src="assets/icon_1024.png" alt="代码乡愁图标">
+      <div class="info">
+        <div class="info-row"><span class="info-label">名称</span><span class="info-value">代码乡愁</span></div>
+        <div class="info-row"><span class="info-label">AppID</span><span class="info-value">wx209ded32a0adb5c2</span></div>
+        <div class="info-row"><span class="info-label">类型</span><span class="info-value">2D像素风RPG</span></div>
+        <div class="info-row"><span class="info-label">版本</span><span class="info-value">v0.6</span></div>
+        <div class="info-row"><span class="info-label">引擎</span><span class="info-value">微信小游戏 Canvas</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>游戏简介</h2>
+    <div class="desc-box">
+      <h3>短版（30字以内）</h3>
+      <p>老程序员误入代码江湖，携AI伙伴绿萝闯五派、战Bug、寻零号真相。</p>
+    </div>
+    <div class="desc-box">
+      <h3>标准版（80字以内）</h3>
+      <p>老陈调试30年BASIC程序时发现一行不该存在的REM注释——那是入口。他键入RUN，被吸进代码江湖。算法是武功，数据结构是内功，编程范式是门派，Bug是妖魔。携AI伙伴绿萝，闯五派，战妖魔，直面零号Bug。</p>
+    </div>
+    <div class="desc-box">
+      <h3>详细版（200字以内）</h3>
+      <p>代码乡愁是一款2D像素风RPG微信小游戏。老程序员老陈在调试30年BASIC程序时，发现一行不该存在的REM注释——那是一个入口。他键入RUN，被吸进了"代码江湖"。这个江湖由所有程序员的集体意识构成：算法是武功，数据结构是内功，编程范式是门派，Bug是妖魔。五大门派（结构门、对象宗、函数道、并行会、智能派）五行相克，各执己见。老陈带着AI伙伴绿萝，穿越五个门派领地，招募高手，学习武功，最终进入溢出渊，直面零号Bug。</p>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>分类标签</h2>
+    <div class="tags">
+      <span class="tag">角色扮演</span>
+      <span class="tag">像素风</span>
+      <span class="tag">单机</span>
+      <span class="tag">科幻</span>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>上架检查清单</h2>
+    <ul class="checklist">
+      <li class="done">AppID 已更新：wx209ded32a0adb5c2</li>
+      <li class="done">项目名称已更新</li>
+      <li class="done">游戏内标题已更新</li>
+      <li class="done">封面图已生成</li>
+      <li class="done">图标已生成</li>
+      <li class="done">游戏简介已撰写</li>
+      <li>在微信公众平台上传封面和图标</li>
+      <li>在微信公众平台填写游戏简介</li>
+      <li>提交审核</li>
+    </ul>
+  </div>
+</div>
+</body>
+</html>

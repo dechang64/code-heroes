@@ -59,6 +59,13 @@ window.wx = {
   onTouchStart(cb) { this._touchStart = cb; },
   onTouchMove(cb) { this._touchMove = cb; },
   onTouchEnd(cb) { this._touchEnd = cb; },
+  // Storage mock
+  _storage: {},
+  setStorageSync(key, val) { this._storage[key] = val; },
+  getStorageSync(key) { return this._storage[key] || ''; },
+  removeStorageSync(key) { delete this._storage[key]; },
+  // Cloud mock（浏览器测试时不可用）
+  cloud: undefined,
 };
 
 // 触摸事件转发

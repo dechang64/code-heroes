@@ -1,5 +1,5 @@
 {
-  "description": "代码群侠传 - 微信小游戏版",
+  "description": "代码乡愁 - 微信小游戏版",
   "packOptions": {
     "ignore": [
       { "type": "folder", "value": "cloudfunctions" }
@@ -46,8 +46,8 @@
   },
   "compileType": "miniGame",
   "libVersion": "3.7.1",
-  "appid": "wx7fc55218c85f1bf2",
-  "projectname": "code-heroes",
+  "appid": "wx209ded32a0adb5c2",
+  "projectname": "daimaxiangchou",
   "cloudfunctionRoot": "cloudfunctions/",
   "condition": {},
   "editorSetting": {
